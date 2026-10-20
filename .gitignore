@@ -1,0 +1,23 @@
+# Segredos - NUNCA versionar
+.streamlit/secrets.toml
+secrets.toml
+*.key
+*-service-account*.json
+credentials*.json
+# (o modelo .streamlit/secrets.toml.example PODE ser versionado)
+!.streamlit/secrets.toml.example
+
+# Arquivo original com as credenciais (apague depois de conferir o secrets.toml)
+\#\ =====\ GOOGLE\ SHEETS\ =====.txt
+
+# Ambiente virtual
+.venv/
+venv/
+
+# Cache do Python
+__pycache__/
+*.pyc
+
+# Logs e temporarios
+*.log
+_*.py
