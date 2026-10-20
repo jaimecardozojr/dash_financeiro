@@ -109,6 +109,62 @@ def drop_summary_rows(df, numeric_cols):
     return df[~(stray | totais)].reset_index(drop=True)
 
 
+def _num_simples(s):
+    """Converte '24645.09', '-497', '-1832.5' em float (ou None)."""
+    try:
+        return float(str(s).replace(" ", "").replace(" ", ""))
+    except (TypeError, ValueError):
+        return None
+
+
+def _fmt_money_br(s) -> str:
+    """Formata um numero em R$ brasileiro; negativo entre parenteses."""
+    x = _num_simples(s)
+    if x is None:
+        return str(s).strip()
+    v = f"{abs(x):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"(R$ {v})" if x < 0 else f"R$ {v}"
+
+
+def parse_extrato_sicredi(file, filename: str = "") -> list:
+    """Le um extrato Sicredi (.xls/.xlsx) e devolve as linhas prontas para a aba.
+
+    Mantem o cabecalho (Associado/Cooperativa/Conta/periodo), a linha de titulos
+    (Data/Descricao/...), 'Saldo Anterior' e os lancamentos — formatando Valor e
+    Saldo em R$. Ignora marketing e a secao de 'Lancamentos Futuros'.
+    """
+    name = (filename or getattr(file, "name", "") or "").lower()
+    engine = "openpyxl" if name.endswith(".xlsx") else "xlrd"
+    df = pd.read_excel(file, header=None, dtype=str, engine=engine).fillna("")
+    rows = [[str(c).strip() for c in r] for r in df.values.tolist()]
+
+    # acha a linha de titulos (col0 == 'Data' e algum 'Valor')
+    hidx = None
+    for i, r in enumerate(rows):
+        if r and r[0].lower() == "data" and any("valor" in c.lower() for c in r):
+            hidx = i
+            break
+    if hidx is None:
+        raise ValueError("cabecalho (Data/Valor) nao encontrado — este arquivo e um "
+                         "extrato Sicredi em .xls?")
+
+    out = [r[:5] + [""] * (5 - len(r)) for r in rows[:hidx + 1]]  # cabecalho + titulos
+
+    for r in rows[hidx + 1:]:
+        r = (r + [""] * 5)[:5]
+        col0, col1 = r[0], r[1]
+        is_saldo_ant = col1.lower().startswith("saldo anterior")
+        is_txn = bool(DATE_RE.match(col0))
+        if is_saldo_ant or is_txn:
+            r[3] = _fmt_money_br(r[3]) if r[3] else ""
+            r[4] = _fmt_money_br(r[4]) if r[4] else ""
+            out.append(r)
+        elif col0:  # texto que nao e data = marketing / 'Lancamentos Futuros' -> fim
+            break
+        # linha vazia: ignora e continua
+    return out
+
+
 def parse_br_number(series: pd.Series) -> pd.Series:
     """Converte texto brasileiro (R$ 1.234,56 ; (R$ 10,00) ; 10%) para numero."""
     s = series.astype(str).str.strip()

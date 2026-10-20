@@ -5,3 +5,5 @@ pandas>=2.2
 plotly>=5.22
 streamlit-autorefresh>=1.0
 extra-streamlit-components>=0.1.71
+xlrd>=2.0
+openpyxl>=3.1

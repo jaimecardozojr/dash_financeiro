@@ -374,7 +374,7 @@ def _alertas(caixa, a_pagar, a_receber, venc_n, venc_val, liquidez, crf, cpf):
 # -----------------------------------------------------------------------------
 # RESUMO EXECUTIVO
 # -----------------------------------------------------------------------------
-def render_resumo(cp, cr, fo, ex, rb=None):
+def render_resumo(cp, cr, fo, extratos, rb=None):
     st.subheader("📈 Resumo Executivo")
     hoje = pd.Timestamp.today().normalize()
     st.caption(f"Posicao consolidada · {hoje.strftime('%d/%m/%Y')}")
@@ -401,11 +401,20 @@ def render_resumo(cp, cr, fo, ex, rb=None):
     fof = _filter_empresa(fo, empresa)
 
     # ---------- Numeros ----------
-    caixa = 0.0
-    if ex is not None:
-        cc = su.find_col(ex.num.columns, "Saldo (R$)", "Saldo")
-        s = ex.num[cc].dropna() if cc else pd.Series(dtype=float)
-        caixa = float(s.iloc[-1]) if not s.empty else 0.0
+    def _caixa_de(frame):
+        if frame is None:
+            return 0.0
+        cc = su.find_col(frame.num.columns, "Saldo (R$)", "Saldo")
+        if not cc:
+            return 0.0
+        s = frame.num[cc].dropna()
+        return float(s.iloc[-1]) if not s.empty else 0.0
+
+    extratos = extratos or {}
+    if empresa == "Todas":
+        caixa = sum(_caixa_de(f) for f in extratos.values())
+    else:
+        caixa = _caixa_de(extratos.get(empresa))
     a_receber = _sum(crf, "A Receber")
     if rb is not None:  # "Recebido" vem da aba dedicada "Recebidos"
         rbf = _filter_periodo(_filter_empresa(rb, empresa), ["Vencimento"], d1, d2)
@@ -435,9 +444,11 @@ def render_resumo(cp, cr, fo, ex, rb=None):
     # ---------- KPIs ----------
     ui.kpi_row([
         {"label": "Saldo em Caixa", "value": su.format_brl(caixa),
-         "color": ui.GREEN if caixa >= 0 else ui.RED, "sub": "conta corrente (grupo)",
-         "help": "Dinheiro disponível hoje na conta. É o último saldo da aba Extrato "
-                 "(fechamento mais recente). Não muda com o filtro de empresa."},
+         "color": ui.GREEN if caixa >= 0 else ui.RED,
+         "sub": "conta corrente" + (" (grupo)" if empresa == "Todas" else f" ({empresa})"),
+         "help": "Dinheiro disponível hoje. É o último saldo do extrato de cada empresa. "
+                 "Com empresa = Todas, soma as duas contas; filtrando por empresa, mostra "
+                 "só a dela."},
         {"label": "A Receber", "value": su.format_brl(a_receber), "color": ui.GREEN,
          "help": "Quanto os clientes ainda devem. Soma da coluna 'A Receber' dos títulos "
                  "em aberto (aba CR em aberto), respeitando os filtros acima."},
@@ -569,8 +580,10 @@ def render_resumo(cp, cr, fo, ex, rb=None):
         _receita_despesa_empresa(cr, cp, fo)
 
     # ---------- Evolucao do saldo ----------
-    if ex is not None:
-        _saldo_evolucao(ex)
+    ev = (extratos.get(empresa) if empresa != "Todas"
+          else next((f for f in extratos.values() if f is not None), None))
+    if ev is not None:
+        _saldo_evolucao(ev)
 
     # ---------- Alertas ----------
     st.divider()
@@ -1501,8 +1514,21 @@ def _ex_categoria(texto):
 _EX_CUSTO = {"IOF", "Juros/Encargos", "Tarifas/Fatura"}
 
 
-def render_extrato(fr):
+def render_extrato(extratos):
     st.subheader("🏦 Extrato Bancário — Fluxo de Caixa")
+
+    # extratos: dict {empresa: Frames ou None}
+    disponiveis = [e for e, f in (extratos or {}).items() if f is not None and not f.raw.empty]
+    if not disponiveis:
+        st.info("Ainda não há extrato importado. Use **📤 Importar Extrato** para enviar "
+                "o arquivo .xls do banco.")
+        return
+    if len(disponiveis) > 1:
+        empresa = st.radio("Empresa", disponiveis, horizontal=True, key="ex_empresa")
+    else:
+        empresa = disponiveis[0]
+        st.caption(f"Empresa: **{empresa}**")
+    fr = extratos[empresa]
 
     data = su.find_col(fr.raw.columns, "Data")
     desc = su.find_col(fr.raw.columns, "Descrição", "Descricao", "Historico")

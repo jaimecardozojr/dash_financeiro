@@ -12,6 +12,8 @@ import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 
+import pandas as pd
+
 import auth
 import sheets_utils as su
 import ui
@@ -28,8 +30,8 @@ SERVICE_EMAIL = "gestora@sistemafinanceiro-478923.iam.gserviceaccount.com"
 TAB_CP = "Contas a Pagar"
 TAB_CR = "CR em aberto"
 TAB_FOLHA = "Folha"
-TAB_EXTRATO = "Extrato mes"
 TAB_RECEBIDOS = "Recebidos"
+EXTRATO_EMPRESAS = ["Roboteasy", "Agapys"]  # cada empresa tem sua aba de extrato
 
 st.set_page_config(page_title="Dashboard Financeiro", page_icon="📊", layout="wide")
 ui.inject_css()
@@ -92,6 +94,7 @@ VIEWS = {
     "💰 Recebidos": "recebidos",
     "👥 Folha": "folha",
     "🏦 Extrato": "extrato",
+    "📤 Importar Extrato": "importar",
     "✏️ Editar dados": "editar",
 }
 
@@ -132,6 +135,26 @@ def frames_or_warn(tab):
 def frames_opt(tab):
     """Carrega uma aba opcional; retorna None se nao existir (sem avisar)."""
     return get_frames(tab) if tab in names else None
+
+
+def _extrato_tab(empresa):
+    """Nome da aba de extrato de cada empresa (com fallback para 'Extrato mes')."""
+    pref = f"Extrato {empresa}"
+    if pref in names:
+        return pref
+    if empresa == "Roboteasy" and "Extrato mes" in names:
+        return "Extrato mes"
+    return pref
+
+
+def load_extratos():
+    """Dict {empresa: Frames ou None} com os extratos existentes."""
+    out = {}
+    for emp in EXTRATO_EMPRESAS:
+        tab = _extrato_tab(emp)
+        fr = get_frames(tab) if tab in names else None
+        out[emp] = fr if (fr is not None and not fr.raw.empty) else None
+    return out
 
 
 # -----------------------------------------------------------------------------
@@ -175,11 +198,58 @@ def render_editar():
 
 
 # -----------------------------------------------------------------------------
+# Importar extrato (.xls do banco -> aba da empresa)
+# -----------------------------------------------------------------------------
+def render_importar():
+    st.subheader("📤 Importar Extrato")
+    st.caption("Envie o arquivo **.xls** do extrato (Sicredi) e o app preenche a aba da "
+               "empresa automaticamente.")
+    empresa = st.selectbox("Empresa", EXTRATO_EMPRESAS, key="imp_empresa")
+    file = st.file_uploader("Arquivo do extrato (.xls)", type=["xls", "xlsx"],
+                            key="imp_file")
+    if not file:
+        return
+    try:
+        linhas = su.parse_extrato_sicredi(file, filename=file.name)
+    except Exception as e:
+        st.error(f"Não consegui ler o arquivo: {e}")
+        return
+    if len(linhas) <= 9:
+        st.warning("O arquivo não tem lançamentos reconhecidos. Confira se é o extrato certo.")
+        return
+
+    tab = _extrato_tab(empresa)
+    existe = tab in names
+    n_lanc = sum(1 for r in linhas if r[0] and r[0][:2].isdigit())
+    st.success(f"✅ Arquivo lido: **{n_lanc} lançamentos**. Prévia do que será gravado:")
+    prev = pd.DataFrame(linhas[8:], columns=linhas[8] if len(linhas) > 8 else None)
+    st.dataframe(prev.iloc[1:], width="stretch", hide_index=True, height=320)
+    st.caption(f"Destino: aba **{tab}** " +
+               ("(o conteúdo atual será substituído)." if existe else "(aba nova será criada)."))
+
+    if st.button("💾 Gravar na planilha", type="primary"):
+        try:
+            if existe:
+                ws = get_spreadsheet().worksheet(tab)
+                ws.clear()
+            else:
+                ws = get_spreadsheet().add_worksheet(
+                    title=tab, rows=max(100, len(linhas) + 10), cols=8)
+            ws.update(values=linhas, range_name="A1", value_input_option="RAW")
+            st.cache_data.clear()
+            st.success(f"Extrato da **{empresa}** gravado na aba '{tab}'! "
+                       "Veja em 🏦 Extrato.")
+            st.balloons()
+        except Exception as e:
+            st.error(f"Erro ao gravar: {e}")
+
+
+# -----------------------------------------------------------------------------
 # Dispatch
 # -----------------------------------------------------------------------------
 if view == "resumo":
     views.render_resumo(frames_or_warn(TAB_CP), frames_or_warn(TAB_CR),
-                        frames_or_warn(TAB_FOLHA), frames_or_warn(TAB_EXTRATO),
+                        frames_or_warn(TAB_FOLHA), load_extratos(),
                         rb=frames_opt(TAB_RECEBIDOS))
 elif view == "cp":
     fr = frames_or_warn(TAB_CP)
@@ -198,8 +268,8 @@ elif view == "folha":
     if fr:
         views.render_folha(fr)
 elif view == "extrato":
-    fr = frames_or_warn(TAB_EXTRATO)
-    if fr:
-        views.render_extrato(fr)
+    views.render_extrato(load_extratos())
+elif view == "importar":
+    render_importar()
 elif view == "editar":
     render_editar()

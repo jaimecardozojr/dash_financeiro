@@ -21,3 +21,8 @@ __pycache__/
 # Logs e temporarios
 *.log
 _*.py
+
+# Extratos / planilhas do banco (dados sensiveis) - nunca versionar
+*.xls
+*.xlsx
+*.ods
