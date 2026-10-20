@@ -82,8 +82,9 @@ do `secrets.toml` (`usuario = "senha"`):
 jaime = "troque-esta-senha"
 ```
 
-Troque a senha padrão. Para adicionar pessoas, é só mais linhas. Na barra lateral
-há o botão **🚪 Sair**.
+Troque a senha padrão. Para adicionar pessoas, é só mais linhas. O login fica
+**salvo por 7 dias** no navegador (cookie), então não pede senha a cada F5. Na
+barra lateral há o botão **🚪 Sair**.
 
 ## 🌐 Deploy (colocar online)
 

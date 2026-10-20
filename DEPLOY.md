@@ -96,9 +96,11 @@ uma conta no **GitHub**.
 
 ## ❓ Perguntas comuns
 
-- **Preciso pedir login toda vez?** Sim, a cada nova sessão/atualização de página —
-  é o comportamento seguro. Se quiser login persistente por X dias (via cookie),
-  dá para evoluir com a biblioteca `streamlit-authenticator` depois.
+- **Preciso logar toda vez?** Não. O login fica salvo por **7 dias** naquele
+  navegador (via cookie assinado). Para sair antes, use o botão **🚪 Sair**.
+- **Como assinar o cookie com minha própria chave?** (recomendado em produção)
+  adicione no `secrets.toml` uma linha `cookie_secret = "uma-frase-aleatoria-grande"`.
+  Se não definir, o app usa uma chave derivada da conta de serviço (também funciona).
 - **Esqueci a senha.** Edite a seção `[credenciais]` no `secrets.toml` (local) ou
   nos Secrets do Streamlit Cloud.
 - **Dados não aparecem no deploy.** Confira se a planilha está compartilhada com o
