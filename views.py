@@ -2077,7 +2077,16 @@ def render_segmento(fr):
         if not dts.empty:
             dmin, dmax = dts.min().date(), dts.max().date()
     if dmin and dmax and dmin < dmax:
-        d1, d2 = st.slider("Período (vencimento)", dmin, dmax, (dmin, dmax),
+        # padrao: mes vigente (1o dia ate ultimo dia do mes atual)
+        mes_ini = hoje.replace(day=1).date()
+        prox_mes = (hoje.replace(day=28) + pd.Timedelta(days=4)).replace(day=1)
+        mes_fim = (prox_mes - pd.Timedelta(days=1)).date()
+        default_ini = max(dmin, mes_ini)
+        default_fim = min(dmax, mes_fim)
+        if default_ini > default_fim:
+            default_ini, default_fim = dmin, dmax
+        d1, d2 = st.slider("Período (vencimento)", dmin, dmax,
+                           (default_ini, default_fim),
                            format="DD/MM/YYYY", key="sg_per")
     else:
         d1, d2 = dmin, dmax
