@@ -1,7 +1,29 @@
 # =============================================================================
 # Elementos visuais: tema escuro, cards de KPI e estilo dos graficos.
 # =============================================================================
+import base64
+import pathlib
+
 import streamlit as st
+
+_LOGO_PATH = pathlib.Path(__file__).parent / "logo" / "logo_roboteasy.png"
+
+
+def logo_base64() -> str:
+    """Retorna a logo em base64 (para embeds HTML). Vazio se nao encontrar."""
+    try:
+        return base64.b64encode(_LOGO_PATH.read_bytes()).decode()
+    except Exception:
+        return ""
+
+
+def logo_img_tag(height: int = 48, style: str = "") -> str:
+    """Tag <img> com a logo embutida em base64."""
+    b64 = logo_base64()
+    if not b64:
+        return ""
+    return (f'<img src="data:image/png;base64,{b64}" '
+            f'height="{height}" style="object-fit:contain;{style}">')
 
 # Paleta
 PRIMARY = "#00D9A6"
@@ -45,13 +67,69 @@ hr {margin:1rem 0;border-color:#1E2433;}
            transition:opacity .15s ease;pointer-events:none;}
 .tip:hover .box {visibility:visible;opacity:1;}
 .tip .box b {color:#EAF0F7;}
-.login-head {text-align:center;margin:2px 0 14px;}
-.login-logo {font-size:2.6rem;line-height:1;}
-.login-title {font-size:1.45rem;font-weight:700;margin-top:6px;}
+.login-head {text-align:center;margin:2px 0 18px;}
+.login-logo {display:flex;justify-content:center;align-items:center;
+             margin-bottom:14px;padding:10px 0;}
+.login-title {font-size:1.3rem;font-weight:700;margin-top:2px;}
 .login-sub {color:#8A93A6;font-size:.84rem;margin-top:4px;}
-div[data-testid="stForm"] {background:#161B26;border:1px solid #262D3D;
-                           border-radius:16px;padding:22px 24px;margin-top:7vh;
-                           box-shadow:0 12px 40px rgba(0,0,0,.45);}
+div[data-testid="stForm"] {background:#161B26;border:1px solid #2D3748;
+                           border-radius:16px;padding:28px 28px 22px;margin-top:7vh;
+                           box-shadow:0 16px 48px rgba(0,0,0,.55);}
+
+/* labels dos campos de login */
+div[data-testid="stForm"] label p {
+    color:#C7CEDB !important;
+    font-size:.82rem !important;
+    font-weight:600 !important;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+    margin-bottom:4px !important;
+}
+/* container externo do input */
+div[data-testid="stForm"] div[data-testid="stTextInput"] > div,
+div[data-testid="stForm"] div[data-testid="stTextInput"] > div > div {
+    background:#0D1117 !important;
+    border:2px solid #4A5E82 !important;
+    border-radius:8px !important;
+}
+/* foco: borda verde + brilho */
+div[data-testid="stForm"] div[data-testid="stTextInput"] > div:focus-within,
+div[data-testid="stForm"] div[data-testid="stTextInput"] > div > div:focus-within {
+    border-color:#00D9A6 !important;
+    box-shadow:0 0 0 3px rgba(0,217,166,.2) !important;
+}
+/* garante que nenhum filho apague a borda */
+div[data-testid="stForm"] div[data-testid="stTextInput"] * {
+    border:none !important;
+    background:transparent !important;
+    outline:none !important;
+    box-shadow:none !important;
+}
+div[data-testid="stForm"] div[data-testid="stTextInput"] > div,
+div[data-testid="stForm"] div[data-testid="stTextInput"] > div > div {
+    border:2px solid #4A5E82 !important;
+    background:#0D1117 !important;
+    border-radius:8px !important;
+}
+div[data-testid="stForm"] div[data-testid="stTextInput"] > div:focus-within,
+div[data-testid="stForm"] div[data-testid="stTextInput"] > div > div:focus-within {
+    border-color:#00D9A6 !important;
+    box-shadow:0 0 0 3px rgba(0,217,166,.2) !important;
+}
+/* texto digitado e cursor */
+div[data-testid="stForm"] div[data-testid="stTextInput"] input {
+    color:#EAF0F7 !important;
+    font-size:1rem !important;
+    caret-color:#00D9A6 !important;
+    background:transparent !important;
+}
+div[data-testid="stForm"] div[data-testid="stTextInput"] input::placeholder {
+    color:#5A6880 !important;
+}
+/* espaçamento entre os campos */
+div[data-testid="stForm"] div[data-testid="stTextInput"] {
+    margin-bottom:14px;
+}
 </style>
 """
 

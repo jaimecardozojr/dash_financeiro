@@ -375,7 +375,7 @@ def _alertas(caixa, a_pagar, a_receber, venc_n, venc_val, liquidez, crf, cpf):
 # RESUMO EXECUTIVO
 # -----------------------------------------------------------------------------
 def render_resumo(cp, cr, fo, extratos, rb=None):
-    st.subheader("📈 Resumo Executivo")
+    st.subheader("🎯 Resumo Executivo")
     hoje = pd.Timestamp.today().normalize()
     st.caption(f"Posicao consolidada · {hoje.strftime('%d/%m/%Y')}")
 
@@ -641,7 +641,7 @@ def _pareto(d, dim, val, top=20):
 
 
 def render_contas_pagar(fr):
-    st.subheader("💸 Contas a Pagar — Gestão")
+    st.subheader("🔴 Contas a Pagar — Gestão")
     hoje = pd.Timestamp.today().normalize()
 
     semana = su.find_col(fr.raw.columns, "Semana")
@@ -753,7 +753,7 @@ def render_contas_pagar(fr):
     st.divider()
 
     t1, t2, t3, t4 = st.tabs(
-        ["📊 Visão Geral", "🏢 Fornecedores", "📅 Vencimentos", "📋 Detalhado"])
+        ["🖥️ Visão Geral", "🔗 Fornecedores", "📡 Vencimentos", "🗂️ Detalhado"])
 
     # ===== Visão Geral =====
     with t1:
@@ -906,7 +906,7 @@ def render_contas_pagar(fr):
 # CONTAS A RECEBER (CR em aberto)
 # -----------------------------------------------------------------------------
 def render_contas_receber(fr, rb=None):
-    st.subheader("📥 Contas a Receber — Gestão")
+    st.subheader("⚡ Contas a Receber — Gestão")
     hoje = pd.Timestamp.today().normalize()
 
     cli = su.find_col(fr.raw.columns, "Razão Social", "Razao Social", "Cliente")
@@ -1038,7 +1038,7 @@ def render_contas_receber(fr, rb=None):
     st.divider()
 
     t1, t2, t3, t4 = st.tabs(
-        ["📊 Visão Geral", "👥 Clientes", "⏳ Aging & Cobrança", "📋 Detalhado"])
+        ["🖥️ Visão Geral", "🎯 Clientes", "⚡ Aging & Cobrança", "🗂️ Detalhado"])
 
     # ===== Visão Geral =====
     with t1:
@@ -1181,7 +1181,7 @@ def _parse_reajuste(series):
 # FOLHA
 # -----------------------------------------------------------------------------
 def render_folha(fr):
-    st.subheader("👥 Folha / Consultores — Análise Detalhada")
+    st.subheader("🤖 Folha / Consultores — Análise Detalhada")
     hoje = pd.Timestamp.today().normalize()
 
     consult = su.find_col(fr.raw.columns, "Consultores", "Consultor", "Nome")
@@ -1282,7 +1282,7 @@ def render_folha(fr):
     st.divider()
 
     t1, t2, t3, t4, t5 = st.tabs(
-        ["📊 Composição", "🏢 Setores", "⏱️ Horas & R$/h", "👤 Consultores", "📅 Reajustes"])
+        ["🖥️ Composição", "🏗️ Setores", "⚡ Horas & R$/h", "🤖 Consultores", "🔄 Reajustes"])
 
     # ===== Composição =====
     with t1:
@@ -1515,12 +1515,12 @@ _EX_CUSTO = {"IOF", "Juros/Encargos", "Tarifas/Fatura"}
 
 
 def render_extrato(extratos):
-    st.subheader("🏦 Extrato Bancário — Fluxo de Caixa")
+    st.subheader("🔍 Extrato Bancário — Fluxo de Caixa")
 
     # extratos: dict {empresa: Frames ou None}
     disponiveis = [e for e, f in (extratos or {}).items() if f is not None and not f.raw.empty]
     if not disponiveis:
-        st.info("Ainda não há extrato importado. Use **📤 Importar Extrato** para enviar "
+        st.info("Ainda não há extrato importado. Use **🔄 Importar Extrato** para enviar "
                 "o arquivo .xls do banco.")
         return
     if len(disponiveis) > 1:
@@ -1640,7 +1640,7 @@ def render_extrato(extratos):
     st.divider()
 
     t1, t2, t3, t4 = st.tabs(
-        ["📊 Fluxo de Caixa", "🏷️ Categorias", "🔝 Maiores", "📋 Detalhado"])
+        ["📡 Fluxo de Caixa", "🏷️ Categorias", "🚀 Maiores", "🗂️ Detalhado"])
 
     # ===== Fluxo de Caixa =====
     with t1:
@@ -1739,7 +1739,7 @@ def render_extrato(extratos):
 # RECEBIDOS
 # -----------------------------------------------------------------------------
 def render_recebidos(fr):
-    st.subheader("💰 Recebidos — Recebimentos")
+    st.subheader("✅ Recebidos — Recebimentos")
 
     cliente = su.find_col(fr.raw.columns, "Cliente") or \
         su.find_col(fr.raw.columns, "Razão Social", "Razao Social")
@@ -1851,7 +1851,7 @@ def render_recebidos(fr):
     st.divider()
 
     t1, t2, t3, t4 = st.tabs(
-        ["📊 Visão Geral", "👥 Clientes", "🧾 Impostos & Deduções", "📋 Detalhado"])
+        ["🖥️ Visão Geral", "🎯 Clientes", "🧮 Impostos & Deduções", "🗂️ Detalhado"])
 
     # ===== Visão Geral =====
     with t1:

@@ -33,7 +33,12 @@ TAB_FOLHA = "Folha"
 TAB_RECEBIDOS = "Recebidos"
 EXTRATO_EMPRESAS = ["Roboteasy", "Agapys"]  # cada empresa tem sua aba de extrato
 
-st.set_page_config(page_title="Dashboard Financeiro", page_icon="📊", layout="wide")
+_logo_path = "logo/logo_roboteasy.png"
+st.set_page_config(
+    page_title="Roboteasy Financeiro",
+    page_icon=_logo_path,
+    layout="wide",
+)
 ui.inject_css()
 
 # ----------------------------- Login (protege o app) -------------------------
@@ -88,31 +93,31 @@ except Exception as e:
     st.stop()
 
 VIEWS = {
-    "📈 Resumo Executivo": "resumo",
-    "💸 Contas a Pagar": "cp",
-    "📥 Contas a Receber": "cr",
-    "💰 Recebidos": "recebidos",
-    "👥 Folha": "folha",
-    "🏦 Extrato": "extrato",
-    "📤 Importar Extrato": "importar",
-    "✏️ Editar dados": "editar",
+    "🎯 Resumo Executivo": "resumo",
+    "🔴 Contas a Pagar": "cp",
+    "⚡ Contas a Receber": "cr",
+    "✅ Recebidos": "recebidos",
+    "🤖 Folha": "folha",
+    "🔍 Extrato": "extrato",
+    "🔄 Importar Extrato": "importar",
+    "⚙️ Editar dados": "editar",
 }
 
 with st.sidebar:
-    st.markdown("## 📊 Financeiro")
+    st.image(_logo_path, width=180)
     st.caption(f"Conectado a **{spreadsheet.title}**")
     escolha = st.radio("Visao", list(VIEWS.keys()), label_visibility="collapsed")
 
     st.divider()
     auto = st.toggle("Atualizar automaticamente", value=False)
     intervalo = st.slider("Intervalo (s)", 10, 300, 30, disabled=not auto)
-    if st.button("🔄 Atualizar agora", width="stretch"):
+    if st.button("⚡ Atualizar agora", width="stretch"):
         st.cache_data.clear()
         st.rerun()
 
     st.divider()
     st.caption(f"👤 Logado como **{auth.current_user()}**")
-    if st.button("🚪 Sair", width="stretch"):
+    if st.button("🔐 Sair", width="stretch"):
         auth.logout()
         st.rerun()
     st.caption(f"Conta de servico:\n\n{SERVICE_EMAIL}")
@@ -122,7 +127,6 @@ if auto and st_autorefresh is not None:
     st.cache_data.clear()
 
 view = VIEWS[escolha]
-st.title("📊 Dashboard Financeiro")
 
 
 def frames_or_warn(tab):
@@ -161,7 +165,7 @@ def load_extratos():
 # Edicao (fica aqui porque grava na planilha)
 # -----------------------------------------------------------------------------
 def render_editar():
-    st.subheader("✏️ Editar dados")
+    st.subheader("⚙️ Editar dados")
     aba = st.selectbox("Aba", names)
     fr = get_frames(aba)
     if fr.raw.empty:
@@ -201,7 +205,7 @@ def render_editar():
 # Importar extrato (.xls do banco -> aba da empresa)
 # -----------------------------------------------------------------------------
 def render_importar():
-    st.subheader("📤 Importar Extrato")
+    st.subheader("🔄 Importar Extrato")
     st.caption("Envie o arquivo **.xls** do extrato (Sicredi) e o app preenche a aba da "
                "empresa automaticamente.")
     empresa = st.selectbox("Empresa", EXTRATO_EMPRESAS, key="imp_empresa")
@@ -238,7 +242,7 @@ def render_importar():
             ws.update(values=linhas, range_name="A1", value_input_option="RAW")
             st.cache_data.clear()
             st.success(f"Extrato da **{empresa}** gravado na aba '{tab}'! "
-                       "Veja em 🏦 Extrato.")
+                       "Veja em 🔍 Extrato.")
             st.balloons()
         except Exception as e:
             st.error(f"Erro ao gravar: {e}")

@@ -18,6 +18,7 @@ import time
 from datetime import datetime, timedelta
 
 import streamlit as st
+import ui
 
 try:
     import extra_streamlit_components as stx
@@ -172,12 +173,15 @@ def require_login() -> bool:
     _, col, _ = st.columns([1, 1.1, 1])
     with col:
         with st.form("login_form"):
+            logo = ui.logo_img_tag(height=56)
+            logo_html = (f"<div class='login-logo'>{logo}</div>" if logo
+                         else "<div class='login-logo' style='font-size:2.4rem'>📊</div>")
             st.markdown(
-                "<div class='login-head'>"
-                "<div class='login-logo'>📊</div>"
-                "<div class='login-title'>Dashboard Financeiro</div>"
-                "<div class='login-sub'>Acesso restrito — entre para continuar</div>"
-                "</div>",
+                f"<div class='login-head'>"
+                f"{logo_html}"
+                f"<div class='login-title'>Dashboard Financeiro</div>"
+                f"<div class='login-sub'>Acesso restrito — entre para continuar</div>"
+                f"</div>",
                 unsafe_allow_html=True,
             )
             user = st.text_input("Usuário", key="login_user", autocomplete="username")
