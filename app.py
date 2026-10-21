@@ -98,7 +98,7 @@ VIEWS = {
     "🔴 Contas a Pagar": "cp",
     "⚡ Contas a Receber": "cr",
     "✅ Recebidos": "recebidos",
-    "🏷️ Segmento": "segmento",
+    "🏷️ Faturamento": "segmento",
     "🤖 Folha": "folha",
     "🔍 Extrato": "extrato",
     "🔄 Importar Extrato": "importar",

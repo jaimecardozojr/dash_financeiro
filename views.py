@@ -2030,7 +2030,7 @@ def _seg_normaliza(serie: pd.Series) -> pd.Series:
 
 
 def render_segmento(fr):
-    st.subheader("🏷️ Segmento — Carteira de Projetos")
+    st.subheader("🏷️ Faturamento — Carteira de Projetos")
     hoje = pd.Timestamp.today().normalize()
 
     status  = su.find_col(fr.raw.columns, "Status")
