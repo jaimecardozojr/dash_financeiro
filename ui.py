@@ -21,6 +21,8 @@ _CSS = """
 <style>
 .block-container {padding-top: 2.2rem; padding-bottom: 2.5rem; max-width: 1400px;}
 section[data-testid="stSidebar"] {background: #0B0E14;}
+.kpi-grid {display:grid;grid-template-columns:repeat(auto-fit, minmax(165px, 1fr));
+           gap:14px;margin-bottom:14px;}
 .kpi {background:#161B26;border:1px solid #262D3D;border-radius:14px;
       padding:16px 18px;display:flex;flex-direction:column;gap:6px;height:100%;}
 .kpi .lbl {color:#8A93A6;font-size:.72rem;font-weight:600;
@@ -67,18 +69,24 @@ def _tip(text):
 
 
 def kpi_row(cards):
-    """cards = lista de dicts {label, value, color?, sub?, help?}."""
-    cols = st.columns(len(cards))
-    for col, c in zip(cols, cards):
+    """cards = lista de dicts {label, value, color?, sub?, help?}.
+
+    Renderiza todos os cards num grid CSS com espacamento uniforme (mesmo gap
+    horizontal e vertical), em um unico bloco HTML.
+    """
+    partes = ["<div class='kpi-grid'>"]
+    for c in cards:
         color = c.get("color", PRIMARY)
         sub = f'<div class="sub">{c["sub"]}</div>' if c.get("sub") else ""
-        lbl = f'<div class="lblrow"><span class="lbl">{c["label"]}</span>{_tip(c.get("help"))}</div>'
-        col.markdown(
+        lbl = (f'<div class="lblrow"><span class="lbl">{c["label"]}</span>'
+               f'{_tip(c.get("help"))}</div>')
+        partes.append(
             f'<div class="kpi">{lbl}'
             f'<div class="val" style="color:{color}">{c["value"]}</div>'
-            f'{sub}<div class="accent" style="background:{color}"></div></div>',
-            unsafe_allow_html=True,
+            f'{sub}<div class="accent" style="background:{color}"></div></div>'
         )
+    partes.append("</div>")
+    st.markdown("".join(partes), unsafe_allow_html=True)
 
 
 def style_fig(fig, height=330, legend=True):
