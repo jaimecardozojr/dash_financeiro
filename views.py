@@ -1413,17 +1413,46 @@ def render_folha(fr):
         with c2:
             if vlrhr:
                 _h("Distribuição de VLR/HR",
-                   "Quantos consultores há em cada faixa de valor/hora. As barras contam "
-                   "pessoas por faixa de VLR/HR.")
-                fig = px.histogram(d.dropna(subset=[vlrhr]), x=vlrhr, nbins=20)
-                fig.update_traces(
-                    marker_color=ui.TEAL,
-                    marker_line_width=0,
-                    opacity=0.88,
-                    marker_cornerradius=4,
-                    hovertemplate="R$/h: %{x:,.2f}<br>Qtde: %{y:,.0f}<extra></extra>",
-                )
-                _plot(ui.style_fig(fig, 340, legend=False), width="stretch")
+                   "Quantos consultores há em cada faixa de valor/hora. Passe o mouse "
+                   "para ver quem está em cada faixa.")
+                hd = d.dropna(subset=[vlrhr]).copy()
+                if not hd.empty:
+                    # bins manuais para poder associar nomes a cada faixa
+                    vmin, vmax = hd[vlrhr].min(), hd[vlrhr].max()
+                    nbins = min(15, max(5, len(hd) // 2))
+                    bins = pd.cut(hd[vlrhr], bins=nbins)
+                    hd["_faixa"] = bins.astype(str)
+                    hd["_faixa_mid"] = bins.apply(lambda x: (x.left + x.right) / 2)
+                    nome_col = consult if consult else None
+                    grp = (hd.groupby("_faixa", observed=True)
+                           .agg(
+                               Qtde=(vlrhr, "count"),
+                               Mid=("_faixa_mid", "first"),
+                               Nomes=(nome_col, lambda s: "<br>  · ".join(
+                                   sorted(s.astype(str).str.strip().tolist())
+                               )) if nome_col else (vlrhr, "count"),
+                           )
+                           .reset_index()
+                           .sort_values("Mid"))
+                    fig = px.bar(grp, x="Mid", y="Qtde",
+                                 custom_data=["Nomes", "_faixa"],
+                                 text="Qtde")
+                    fig.update_traces(
+                        marker_color=ui.TEAL,
+                        marker_line_width=0,
+                        marker_cornerradius=4,
+                        opacity=0.88,
+                        textposition="outside",
+                        cliponaxis=False,
+                        hovertemplate=(
+                            "<b>%{customdata[1]}</b><br>"
+                            "%{y:,.0f} consultor(es):<br>"
+                            "  · %{customdata[0]}"
+                            "<extra></extra>"
+                        ),
+                    )
+                    fig.update_xaxes(title="R$/hora")
+                    _plot(ui.style_fig(fig, 340, legend=False), width="stretch")
         if horas and vlrhr:
             _h("Relação horas × valor/hora (tamanho = custo mensal)",
                "Cada bolha é um consultor: eixo X = horas/mês, eixo Y = valor/hora, tamanho "
