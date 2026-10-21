@@ -46,11 +46,15 @@ def _empty(df):
 
 
 def _mt(fig, date=False, keepname=False, prefix="R$ "):
-    """Aplica um hovertemplate bonito (valor em R$) a barras/linhas verticais."""
+    """Hover unificado com data DD/MM/AAAA e valor em R$."""
     lx = "%{x|%d/%m/%Y}" if date else "%{x}"
     tail = "" if keepname else "<extra></extra>"
     fig.update_traces(hovertemplate=f"<b>{lx}</b><br>{prefix}%{{y:,.2f}}{tail}")
     return fig
+
+
+# Raio dos cantos das barras (suporte Plotly 5.19+/7.x)
+_CORNER = 6
 
 
 def _bar(df, x, y, color=None, cmap=None, horizontal=False, height=330, legend=False,
@@ -62,10 +66,20 @@ def _bar(df, x, y, color=None, cmap=None, horizontal=False, height=330, legend=F
                      color_discrete_map=cmap, text_auto=".2s")
     else:
         fig = px.bar(df, x=x, y=y, color=color, color_discrete_map=cmap, text_auto=".2s")
-    fig.update_traces(textposition="outside", cliponaxis=False)
+
+    # cantos arredondados + sem borda + opacidade suave
+    fig.update_traces(
+        textposition="outside",
+        cliponaxis=False,
+        marker_line_width=0,
+        opacity=0.92,
+        marker_cornerradius=_CORNER,
+        textfont=dict(size=11, color="#C7CEDB"),
+    )
     if marker and color is None:
         fig.update_traces(marker_color=marker)
-    if color is None:  # hover so para serie unica (mantem nome nas agrupadas)
+
+    if color is None:
         pref = "R$ " if money else ""
         dec = ":,.2f" if money else ":,.0f"
         if horizontal:
@@ -74,24 +88,20 @@ def _bar(df, x, y, color=None, cmap=None, horizontal=False, height=330, legend=F
         else:
             fig.update_traces(
                 hovertemplate=f"<b>%{{x}}</b><br>{pref}%{{y{dec}}}<extra></extra>")
-    _plot(ui.style_fig(fig, height, legend=legend or color is not None),
-                    width="stretch")
+
+    _plot(ui.style_fig(fig, height, legend=legend or color is not None), width="stretch")
 
 
 def _ranking_bar(grouped, dim, val, key, title, top=None, height=None, marker=None, help=None):
-    """Ranking horizontal com controle de ordem (maior->menor / menor->maior).
-
-    `grouped` deve ter colunas [dim, val] (uma linha por item).
-    """
+    """Ranking horizontal com controle de ordem."""
     st.markdown(f"**{title}**", help=help)
     if grouped is None or len(grouped) == 0:
         st.caption("Sem dados no filtro atual.")
         return
-    total = len(grouped)
-    n = min(top, total) if top else total
+    n = min(top, len(grouped)) if top else len(grouped)
     ordem = st.radio("Ordem", ["Maior → menor", "Menor → maior"],
                      horizontal=True, key=f"{key}_ord")
-    sel = grouped.sort_values(val, ascending=False).head(n)  # sempre os n maiores
+    sel = grouped.sort_values(val, ascending=False).head(n)
     g = sel.sort_values(val, ascending=(ordem == "Maior → menor"))
     _bar(g, dim, val, horizontal=True, height=height or max(300, n * 26), marker=marker)
 
@@ -99,10 +109,16 @@ def _ranking_bar(grouped, dim, val, key, title, top=None, height=None, marker=No
 def _donut(df, names, values, cmap=None, height=330):
     if _empty(df):
         return
-    fig = px.pie(df, names=names, values=values, hole=0.55, color=names,
+    fig = px.pie(df, names=names, values=values, hole=0.62, color=names,
                  color_discrete_map=cmap)
-    fig.update_traces(textposition="inside", textinfo="percent+label",
-                      hovertemplate="<b>%{label}</b><br>R$ %{value:,.2f} · %{percent}<extra></extra>")
+    fig.update_traces(
+        textposition="inside",
+        textinfo="percent+label",
+        textfont=dict(size=12),
+        marker=dict(line=dict(color="rgba(0,0,0,0)", width=0)),
+        pull=[0.03] * len(df),  # leve separacao entre fatias
+        hovertemplate="<b>%{label}</b><br>R$ %{value:,.2f}<br>%{percent}<extra></extra>",
+    )
     _plot(ui.style_fig(fig, height), width="stretch")
 
 
@@ -133,6 +149,8 @@ def _builder(fr):
             _bar(g, dim, val)
         elif tp == "Linha":
             fig = px.line(g.sort_values(dim), x=dim, y=val, markers=True)
+            fig.update_traces(line=dict(width=3, shape="spline", smoothing=1.2),
+                              marker=dict(size=8, line=dict(width=2, color="#0E1117")))
             _plot(ui.style_fig(fig), width="stretch")
         else:
             _donut(g.head(12), dim, val)
@@ -234,18 +252,30 @@ def _month_group(fr, date_names, val_names):
 
 def _gauge(value, ref=1.0):
     vmax = max(1.5, min(3.0, value * 1.3)) if value and value > 0 else 1.5
+    cor = ui.GREEN if value >= 1.2 else (ui.AMBER if value >= 0.8 else ui.RED)
     fig = go.Figure(go.Indicator(
-        mode="gauge+number", value=value, number={"valueformat": ".2f"},
+        mode="gauge+number+delta",
+        value=value,
+        delta={"reference": ref, "valueformat": ".2f",
+               "increasing": {"color": ui.GREEN}, "decreasing": {"color": ui.RED}},
+        number={"valueformat": ".2f", "font": {"size": 36, "color": cor}},
         gauge={
-            "axis": {"range": [0, vmax], "tickwidth": 1, "tickcolor": "#8A93A6"},
-            "bar": {"color": ui.PRIMARY, "thickness": 0.28},
+            "axis": {"range": [0, vmax], "tickwidth": 1, "tickcolor": "#4A5568",
+                     "dtick": 0.5},
+            "bar": {"color": cor, "thickness": 0.3},
             "bgcolor": "rgba(0,0,0,0)", "borderwidth": 0,
             "steps": [
-                {"range": [0, 0.8], "color": "rgba(244,63,94,0.30)"},
-                {"range": [0.8, 1.2], "color": "rgba(251,191,36,0.28)"},
-                {"range": [1.2, vmax], "color": "rgba(34,197,94,0.28)"}],
-            "threshold": {"line": {"color": "#E6EAF1", "width": 3},
-                          "thickness": 0.85, "value": ref}}))
+                {"range": [0, 0.8], "color": "rgba(244,63,94,0.18)"},
+                {"range": [0.8, 1.2], "color": "rgba(251,191,36,0.18)"},
+                {"range": [1.2, vmax], "color": "rgba(34,197,94,0.18)"},
+            ],
+            "threshold": {
+                "line": {"color": "rgba(255,255,255,0.6)", "width": 2},
+                "thickness": 0.82, "value": ref,
+            },
+        },
+    ))
+    fig.update_layout(margin=dict(t=20, b=0, l=20, r=20))
     _plot(ui.style_fig(fig, 240, legend=False), width="stretch")
 
 
@@ -258,10 +288,15 @@ def _waterfall(caixa, receber, pagar):
         y=[caixa, receber, -pagar, 0],
         text=[su.format_brl(v) for v in [caixa, receber, -pagar, final]],
         textposition="outside",
-        connector={"line": {"color": "#3a4256"}},
-        increasing={"marker": {"color": ui.GREEN}},
-        decreasing={"marker": {"color": ui.RED}},
-        totals={"marker": {"color": ui.PRIMARY if final >= 0 else ui.RED}}))
+        textfont=dict(size=11, color="#C7CEDB"),
+        connector={"line": {"color": "rgba(100,116,139,0.4)", "width": 1.5,
+                            "dash": "dot"}},
+        increasing={"marker": {"color": ui.GREEN, "line": {"width": 0}}},
+        decreasing={"marker": {"color": ui.RED, "line": {"width": 0}}},
+        totals={"marker": {"color": ui.PRIMARY if final >= 0 else ui.RED,
+                           "line": {"width": 0}}},
+        opacity=0.9,
+    ))
     _plot(ui.style_fig(fig, 300, legend=False), width="stretch")
 
 
@@ -328,9 +363,13 @@ def _saldo_evolucao(ex):
     g = d.groupby("_d")[saldo].last().reset_index().sort_values("_d")
     cor = ui.GREEN if g[saldo].iloc[-1] >= 0 else ui.RED
     fig = px.area(g, x="_d", y=saldo, markers=True)
-    fig.update_traces(line_color=cor, fillcolor="rgba(0,217,166,0.10)")
+    fig.update_traces(
+        line=dict(color=cor, width=3, shape="spline", smoothing=1.1),
+        fillcolor=f"rgba({','.join(str(int(cor.lstrip('#')[i:i+2],16)) for i in (0,2,4))},0.12)",
+        marker=dict(size=7, color=cor, line=dict(width=2, color="#0E1117")),
+    )
     _mt(fig, date=True)
-    fig.add_hline(y=0, line_dash="dot", line_color="#8A93A6")
+    fig.add_hline(y=0, line_dash="dot", line_color="rgba(255,255,255,0.2)", line_width=1)
     _plot(ui.style_fig(fig, 300, legend=False), width="stretch")
 
 
@@ -631,9 +670,14 @@ def _pareto(d, dim, val, top=20):
     p["cum"] = p[val].cumsum() / p[val].sum() * 100
     fig = go.Figure()
     fig.add_bar(x=p[dim], y=p[val], name="Valor", marker_color=ui.BLUE,
+                marker_line_width=0, opacity=0.88,
+                marker_cornerradius=_CORNER,
                 hovertemplate="<b>%{x}</b><br>R$ %{y:,.2f}<extra></extra>")
     fig.add_scatter(x=p[dim], y=p["cum"], name="% acumulado", yaxis="y2",
-                    mode="lines+markers", line_color=ui.AMBER,
+                    mode="lines+markers",
+                    line=dict(color=ui.AMBER, width=3, shape="spline", smoothing=1.1),
+                    marker=dict(size=7, color=ui.AMBER,
+                                line=dict(width=2, color="#0E1117")),
                     hovertemplate="<b>%{x}</b><br>Acumulado: %{y:.1f}%<extra></extra>")
     fig.update_layout(yaxis2=dict(overlaying="y", side="right", range=[0, 105],
                                   ticksuffix="%", showgrid=False))
@@ -1339,8 +1383,15 @@ def render_folha(fr):
             td = td[td[custo_col].fillna(0) > 0]
             path = [px.Constant("Folha"), setor] + ([consult] if consult else [])
             fig = px.treemap(td, path=path, values=custo_col, color=custo_col,
-                             color_continuous_scale="Teal")
-            fig.update_traces(textinfo="label+value")
+                             color_continuous_scale=["#0F2A2A", "#00D9A6"],
+                             hover_data={custo_col: ":,.2f"})
+            fig.update_traces(
+                textinfo="label+value",
+                textfont=dict(size=13),
+                marker=dict(cornerradius=6, line=dict(width=2, color="#0E1117")),
+                hovertemplate="<b>%{label}</b><br>R$ %{value:,.2f}<extra></extra>",
+            )
+            fig.update_layout(margin=dict(t=10, b=0, l=0, r=0))
             _plot(ui.style_fig(fig, 460, legend=False), width="stretch")
         else:
             st.caption("Coluna de setor não encontrada.")
@@ -1361,7 +1412,13 @@ def render_folha(fr):
                    "Quantos consultores há em cada faixa de valor/hora. As barras contam "
                    "pessoas por faixa de VLR/HR.")
                 fig = px.histogram(d.dropna(subset=[vlrhr]), x=vlrhr, nbins=20)
-                fig.update_traces(marker_color=ui.TEAL)
+                fig.update_traces(
+                    marker_color=ui.TEAL,
+                    marker_line_width=0,
+                    opacity=0.88,
+                    marker_cornerradius=4,
+                    hovertemplate="R$/h: %{x:,.2f}<br>Qtde: %{y:,.0f}<extra></extra>",
+                )
                 _plot(ui.style_fig(fig, 340, legend=False), width="stretch")
         if horas and vlrhr:
             _h("Relação horas × valor/hora (tamanho = custo mensal)",
@@ -1371,7 +1428,12 @@ def render_folha(fr):
             sc["Consultor"] = sc[consult].astype(str) if consult else ""
             fig = px.scatter(sc, x=horas, y=vlrhr, size=custo_col,
                              color=(tipo if tipo else None), hover_name="Consultor",
-                             size_max=40, color_discrete_sequence=ui.SEQ)
+                             size_max=46, color_discrete_sequence=ui.SEQ)
+            fig.update_traces(
+                marker=dict(opacity=0.82, line=dict(width=1.5, color="rgba(0,0,0,0.4)")),
+                hovertemplate="<b>%{hovertext}</b><br>Horas: %{x:,.0f}<br>"
+                              "R$/h: R$ %{y:,.2f}<br>Custo: R$ %{marker.size:,.2f}<extra></extra>",
+            )
             _plot(ui.style_fig(fig, 420, legend=bool(tipo)), width="stretch")
 
     # ===== Consultores =====
@@ -1432,6 +1494,12 @@ def render_folha(fr):
                                  hover_name=(consult if consult else None),
                                  color_discrete_sequence=ui.SEQ,
                                  labels={"_anos": "Anos de casa"})
+                fig.update_traces(
+                    marker=dict(size=11, opacity=0.85,
+                                line=dict(width=1.5, color="rgba(0,0,0,0.4)")),
+                    hovertemplate="<b>%{hovertext}</b><br>Anos: %{x:.1f}<br>"
+                                  "Custo: R$ %{y:,.2f}<extra></extra>",
+                )
                 _plot(ui.style_fig(fig, 320, legend=False), width="stretch")
         _h("Tabela detalhada",
            "Lista completa dos consultores no filtro, ordenada do maior custo para o menor, "
@@ -1652,9 +1720,14 @@ def render_extrato(extratos):
             g = dd.groupby("_d")[saldo].last().reset_index().sort_values("_d")
             cor = ui.GREEN if g[saldo].iloc[-1] >= 0 else ui.RED
             fig = px.area(g, x="_d", y=saldo, markers=True)
-            fig.update_traces(line_color=cor, fillcolor="rgba(0,217,166,0.10)")
+            fill_col = "rgba(0,217,166,0.12)" if cor == ui.GREEN else "rgba(244,63,94,0.12)"
+            fig.update_traces(
+                line=dict(color=cor, width=3, shape="spline", smoothing=1.1),
+                fillcolor=fill_col,
+                marker=dict(size=7, color=cor, line=dict(width=2, color="#0E1117")),
+            )
             _mt(fig, date=True)
-            fig.add_hline(y=0, line_dash="dot", line_color="#8A93A6")
+            fig.add_hline(y=0, line_dash="dot", line_color="rgba(255,255,255,0.2)", line_width=1)
             _plot(ui.style_fig(fig, 320, legend=False), width="stretch")
 
         if not dd.empty:
@@ -1905,10 +1978,14 @@ def render_recebidos(fr):
             text=[su.format_brl(v) for v in
                   [tot_bruto, -imp_total, -desc_t, juros_t, multa_t, tot_rec]],
             textposition="outside",
-            connector={"line": {"color": "#3a4256"}},
-            increasing={"marker": {"color": ui.GREEN}},
-            decreasing={"marker": {"color": ui.RED}},
-            totals={"marker": {"color": ui.PRIMARY}}))
+            textfont=dict(size=11, color="#C7CEDB"),
+            connector={"line": {"color": "rgba(100,116,139,0.4)", "width": 1.5,
+                                "dash": "dot"}},
+            increasing={"marker": {"color": ui.GREEN, "line": {"width": 0}}},
+            decreasing={"marker": {"color": ui.RED, "line": {"width": 0}}},
+            totals={"marker": {"color": ui.PRIMARY, "line": {"width": 0}}},
+            opacity=0.9,
+        ))
         _plot(ui.style_fig(fig, 340, legend=False), width="stretch")
 
         if imp_cols:

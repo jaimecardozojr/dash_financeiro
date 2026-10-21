@@ -54,6 +54,17 @@ section[data-testid="stSidebar"] {background: #0B0E14;}
 .kpi .accent {height:4px;border-radius:4px;margin-top:6px;}
 h1,h2,h3 {letter-spacing:-.01em;}
 hr {margin:1rem 0;border-color:#1E2433;}
+/* container dos graficos plotly: sem fundo solido, borda sutil */
+div[data-testid="stPlotlyChart"] > div {
+    border-radius:12px;
+    overflow:hidden;
+}
+/* tabs: linha ativa mais fina e colorida */
+button[data-baseweb="tab"] {font-size:.82rem !important; letter-spacing:.03em;}
+button[data-baseweb="tab"][aria-selected="true"] {
+    color:#00D9A6 !important;
+    border-bottom:2px solid #00D9A6 !important;
+}
 .lblrow {display:flex;align-items:center;gap:5px;}
 .tip {position:relative;display:inline-flex;align-items:center;cursor:help;}
 .tip .ic {width:15px;height:15px;border-radius:50%;background:#2A3550;color:#AEB8C8;
@@ -172,23 +183,46 @@ def style_fig(fig, height=330, legend=True):
         template="plotly_dark",
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        margin=dict(t=30, b=10, l=6, r=6),
+        margin=dict(t=36, b=12, l=4, r=8),
         height=height,
-        font=dict(color="#C7CEDB", size=12),
+        font=dict(color="#C7CEDB", size=12,
+                  family="'Segoe UI', 'Inter', 'Roboto', sans-serif"),
         showlegend=legend,
-        legend=dict(orientation="h", yanchor="bottom", y=-0.22, x=0, title=None),
+        legend=dict(
+            orientation="h", yanchor="bottom", y=-0.26, x=0,
+            title=None, bgcolor="rgba(0,0,0,0)",
+            font=dict(size=11, color="#9AA5B4"),
+            itemsizing="constant", itemwidth=30,
+        ),
         colorway=SEQ,
-        # numeros no padrao BR: milhar "." e decimal ","
         separators=",.",
-        hovermode="closest",
+        hovermode="x unified",
         hoverlabel=dict(
-            bgcolor="#0F1420",
-            bordercolor="#334155",
-            font=dict(color="#EAF0F7", size=13, family="Segoe UI, Inter, sans-serif"),
+            bgcolor="rgba(10,14,28,0.92)",
+            bordercolor="rgba(0,217,166,0.35)",
+            font=dict(color="#EAF0F7", size=13,
+                      family="'Segoe UI', 'Inter', sans-serif"),
             align="left",
             namelength=-1,
         ),
+        # animacao suave ao carregar
+        transition=dict(duration=400, easing="cubic-in-out"),
+        bargap=0.28,
+        bargroupgap=0.06,
+        # sem borda ao redor do plot
+        xaxis=dict(showline=False, showspikes=True, spikecolor="rgba(0,217,166,0.3)",
+                   spikethickness=1, spikedash="dot"),
+        uniformtext=dict(minsize=9, mode="hide"),
     )
-    fig.update_xaxes(gridcolor="#20283A", zeroline=False, title=None)
-    fig.update_yaxes(gridcolor="#20283A", zeroline=False, title=None, hoverformat=",.2f")
+    fig.update_xaxes(
+        gridcolor="rgba(255,255,255,0.04)",
+        zeroline=False, zerolinecolor="rgba(255,255,255,0.08)",
+        showline=False, title=None, tickfont=dict(size=11),
+    )
+    fig.update_yaxes(
+        gridcolor="rgba(255,255,255,0.04)",
+        zeroline=False, zerolinecolor="rgba(255,255,255,0.08)",
+        showline=False, title=None, tickfont=dict(size=11),
+        hoverformat=",.2f",
+    )
     return fig
