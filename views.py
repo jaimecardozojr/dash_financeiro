@@ -2133,10 +2133,6 @@ def render_segmento(fr):
          "help": "Parcelas cujo vencimento cai nos próximos 7 dias."},
     ])
     ui.kpi_row([
-        {"label": "Carteira Total", "value": su.format_brl(total_cart), "color": ui.BLUE,
-         "sub": "soma Valor total dos contratos",
-         "help": "Soma do campo 'Valor total' — representa o valor cheio de cada contrato, "
-                 "não apenas a parcela do mês."},
         {"label": "Clientes", "value": str(n_cli), "color": ui.PURPLE,
          "help": "Quantidade de clientes únicos no filtro."},
         {"label": "Segmentos", "value": str(n_seg), "color": ui.PINK,
