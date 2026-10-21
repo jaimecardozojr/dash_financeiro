@@ -84,13 +84,12 @@ def get_frames(worksheet_name: str) -> su.Frames:
 try:
     spreadsheet = get_spreadsheet()
     names = [ws.title for ws in spreadsheet.worksheets()]
-except Exception as e:
+except Exception:
     st.error(
-        "**Nao consegui acessar a planilha.** Compartilhe a planilha (como "
-        f"**Editor**) com:\n\n`{SERVICE_EMAIL}`\n\ne confira o `sheet_id` em "
-        "`.streamlit/secrets.toml`."
+        "Não foi possível conectar à planilha. "
+        "Verifique as configurações e tente novamente. "
+        "Se o problema persistir, contate o administrador."
     )
-    st.caption(f"Detalhe tecnico: {e}")
     st.stop()
 
 VIEWS = {
@@ -122,7 +121,6 @@ with st.sidebar:
     if st.button("🔐 Sair", width="stretch"):
         auth.logout()
         st.rerun()
-    st.caption(f"Conta de servico:\n\n{SERVICE_EMAIL}")
 
 if auto and st_autorefresh is not None:
     st_autorefresh(interval=intervalo * 1000, key="auto_refresh")
