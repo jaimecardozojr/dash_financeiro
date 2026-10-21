@@ -636,9 +636,13 @@ def render_resumo(cp, cr, fo, extratos, rb=None):
 def _styled_table(disp, money_cols=(), status_col=None, sign_cols=(), height=None):
     """Tabela com valores em R$, Status colorido e/ou valores coloridos por sinal."""
     money = [c for c in money_cols if c and c in disp.columns]
-    sty = disp.style.format({c: su.format_brl for c in money})
+    sty = disp.style.format(
+        {c: su.format_brl for c in money},
+        na_rep="—",
+    )
     if status_col and status_col in disp.columns:
-        cores = {"Pago": ui.GREEN, "Pendente": ui.AMBER, "Vencido": ui.RED}
+        cores = {"Pago": ui.GREEN, "Pendente": ui.AMBER, "Vencido": ui.RED,
+                 "Faturado": ui.TEAL, "Faturar": ui.AMBER}
 
         def _c(v):
             cor = cores.get(str(v).strip())
@@ -2267,29 +2271,20 @@ def render_segmento(fr):
         _h("Todos os registros (conforme filtros)",
            "Tabela completa com status colorido, parcela, vencimento e valor. "
            "Baixe em CSV pelo botão abaixo.")
-        # extrai numero atual / total da parcela
-        if parcela:
-            d["_parc_atual"] = (
-                d[parcela].astype(str).str.extract(r"(\d+)/")[0]
-                .pipe(pd.to_numeric, errors="coerce").astype("Int64"))
-            d["_parc_total"] = (
-                d[parcela].astype(str).str.extract(r"/(\d+)")[0]
-                .pipe(pd.to_numeric, errors="coerce").astype("Int64"))
-
         cols = [c for c in [status, fat_por, seg, cli, projeto, parcela,
-                            venc, prev_fat, val_tot, val_par, nf_col, emissao, desc] if c]
-        disp = d[cols].sort_values(venc if venc else cols[0], na_position="last")
-
-        # tabela estilizada
-        money = [c for c in [val_tot, val_par] if c]
-        sty = disp.style.format({c: su.format_brl for c in money if c in disp.columns})
-        if status and status in disp.columns:
-            cores_s = {"Faturado": ui.TEAL, "Faturar": ui.AMBER}
-            sty = sty.map(
-                lambda v: f"color:{cores_s.get(str(v).strip(), '')};font-weight:600",
-                subset=[status])
-        kwargs = {"width": "stretch", "hide_index": True}
-        st.dataframe(sty, **kwargs)
+                            venc, prev_fat, val_tot, val_par, nf_col, emissao, desc]
+                if c and c in d.columns]
+        disp = d[cols].copy().reset_index(drop=True)
+        # ordenacao segura por vencimento
+        if venc and venc in disp.columns:
+            try:
+                disp = disp.assign(
+                    _ord=su.parse_dates(disp[venc])
+                ).sort_values("_ord", na_position="last").drop(columns="_ord")
+            except Exception:
+                pass
+        _styled_table(disp, money_cols=[val_tot, val_par],
+                      status_col=status)
         st.download_button("⬇️ Baixar CSV",
                            disp.to_csv(index=False).encode("utf-8-sig"),
                            "segmento.csv", "text/csv", key="sg_csv")
