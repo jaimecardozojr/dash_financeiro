@@ -1533,17 +1533,36 @@ def render_folha(fr):
                 c1, c2 = st.columns([1.4, 1])
                 with c1:
                     _h("Reajustes por mês",
-                       "Quantos consultores têm reajuste marcado em cada mês (coluna "
-                       "REAJUSTE). Amarelo = ainda vai acontecer; cinza = já passou.")
+                       "Quantos consultores têm reajuste marcado em cada mês. "
+                       "Passe o mouse para ver quem são. "
+                       "Amarelo = ainda vai acontecer; cinza = já passou.")
+                    # monta lista de nomes por mes para o hover
+                    nome_por_mes = (
+                        com.assign(_n=com[consult].astype(str).str.strip() if consult else "?")
+                        .groupby("_per")["_n"]
+                        .apply(lambda s: "<br>  · ".join(sorted(s.tolist())))
+                        .reset_index()
+                    )
+                    nome_por_mes.columns = ["Mes", "Nomes"]
                     g = com["_per"].value_counts().reset_index()
                     g.columns = ["Mes", "Qtde"]
-                    g = g.sort_values("Mes")
+                    g = g.sort_values("Mes").merge(nome_por_mes, on="Mes", how="left")
                     g["Quando"] = g["Mes"].apply(
                         lambda m: "Futuro/atual" if m >= atual else "Passado")
                     fig = px.bar(g, x="Mes", y="Qtde", color="Quando", text_auto=True,
                                  color_discrete_map={"Futuro/atual": ui.AMBER,
-                                                     "Passado": ui.SLATE})
-                    fig.update_traces(hovertemplate="<b>%{x}</b><br>%{y:,.0f} reajuste(s)")
+                                                     "Passado": ui.SLATE},
+                                 custom_data=["Nomes"])
+                    fig.update_traces(
+                        marker_line_width=0,
+                        marker_cornerradius=_CORNER,
+                        hovertemplate=(
+                            "<b>%{x}</b><br>"
+                            "%{y:,.0f} consultor(es):<br>"
+                            "  · %{customdata[0]}"
+                            "<extra></extra>"
+                        ),
+                    )
                     _plot(ui.style_fig(fig, 340, legend=True), width="stretch")
                 with c2:
                     _h("Próximos reajustes",
