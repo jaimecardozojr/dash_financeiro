@@ -31,6 +31,7 @@ TAB_CP = "Contas a Pagar"
 TAB_CR = "CR em aberto"
 TAB_FOLHA = "Folha"
 TAB_RECEBIDOS = "Recebidos"
+TAB_SEGMENTO = "Segmento"
 EXTRATO_EMPRESAS = ["Roboteasy", "Agapys"]  # cada empresa tem sua aba de extrato
 
 _logo_path = "logo/logo_roboteasy.png"
@@ -97,6 +98,7 @@ VIEWS = {
     "🔴 Contas a Pagar": "cp",
     "⚡ Contas a Receber": "cr",
     "✅ Recebidos": "recebidos",
+    "🏷️ Segmento": "segmento",
     "🤖 Folha": "folha",
     "🔍 Extrato": "extrato",
     "🔄 Importar Extrato": "importar",
@@ -271,6 +273,10 @@ elif view == "folha":
     fr = frames_or_warn(TAB_FOLHA)
     if fr:
         views.render_folha(fr)
+elif view == "segmento":
+    fr = frames_or_warn(TAB_SEGMENTO)
+    if fr:
+        views.render_segmento(fr)
 elif view == "extrato":
     views.render_extrato(load_extratos())
 elif view == "importar":

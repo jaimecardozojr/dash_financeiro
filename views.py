@@ -2013,3 +2013,284 @@ def render_recebidos(fr):
         st.download_button("⬇️ Baixar CSV", disp[show].to_csv(index=False).encode("utf-8-sig"),
                            "recebidos.csv", "text/csv", key="rc_csv")
         st.caption(f"{len(disp)} recebimentos no filtro.")
+
+
+# -----------------------------------------------------------------------------
+# SEGMENTO — Carteira de Projetos / Contratos
+# -----------------------------------------------------------------------------
+def _seg_normaliza(serie: pd.Series) -> pd.Series:
+    """Normaliza segmentos: RPA/Saas -> RPA/SaaS, Cloud -> CLOUD etc."""
+    m = {"rpa/saas": "RPA/SaaS", "rpa/saas ": "RPA/SaaS",
+         "cloud": "CLOUD", "e-push/saas": "E-Push/SaaS"}
+    return serie.astype(str).str.strip().map(lambda x: m.get(x.lower(), x))
+
+
+def render_segmento(fr):
+    st.subheader("🏷️ Segmento — Carteira de Projetos")
+    hoje = pd.Timestamp.today().normalize()
+
+    status  = su.find_col(fr.raw.columns, "Status")
+    projeto = su.find_col(fr.raw.columns, "PROJETO", "Projeto")
+    fat_por = su.find_col(fr.raw.columns, "Faturar por")
+    seg     = su.find_col(fr.raw.columns, "Segmento")
+    cli     = su.find_col(fr.raw.columns, "Cliente")
+    parcela = su.find_col(fr.raw.columns, "Parcela")
+    desc    = su.find_col(fr.raw.columns, "DESCRIÇÃO DO PROJETO", "Descrição do Projeto")
+    venc    = su.find_col(fr.raw.columns, "Vencimento")
+    prev_fat= su.find_col(fr.raw.columns, "Dt.Prevista Fatura", "Previsão Fatura")
+    emissao = su.find_col(fr.raw.columns, "Data Emissão")
+    nf_col  = su.find_col(fr.raw.columns, "NF")
+    val_tot = su.find_col(fr.num.columns, "Valor total", "Valor Total")
+    val_par = su.find_col(fr.num.columns, "Valor")
+
+    if not val_par:
+        st.warning("Não encontrei a coluna 'Valor' nesta aba.")
+        _table(fr)
+        return
+
+    # normaliza segmentos
+    d = fr.num.copy()
+    if seg:
+        d[seg] = _seg_normaliza(d[seg])
+
+    def opts(col):
+        if not col:
+            return []
+        s = d[col].astype(str).str.strip()
+        return sorted(s[s.replace("nan", "").str.strip() != ""].unique())
+
+    # ---------- Filtros ----------
+    st.markdown("##### 🔎 Filtros")
+    f1, f2, f3, f4 = st.columns([1, 1, 1.5, 1.5])
+    sel_status = f1.multiselect("Status", opts(status), default=opts(status), key="sg_st")
+    sel_emp    = f2.multiselect("Faturar por", opts(fat_por), default=opts(fat_por), key="sg_emp")
+    sel_seg    = f3.multiselect("Segmento", opts(seg), default=opts(seg), key="sg_seg")
+    busca      = f4.text_input("Buscar cliente / projeto", key="sg_busca")
+
+    dmin = dmax = None
+    if venc:
+        dts = su.parse_dates(d[venc]).dropna()
+        if not dts.empty:
+            dmin, dmax = dts.min().date(), dts.max().date()
+    if dmin and dmax and dmin < dmax:
+        d1, d2 = st.slider("Período (vencimento)", dmin, dmax, (dmin, dmax),
+                           format="DD/MM/YYYY", key="sg_per")
+    else:
+        d1, d2 = dmin, dmax
+
+    # aplica filtros
+    if status:
+        d = d[d[status].astype(str).str.strip().isin(sel_status)]
+    if fat_por:
+        d = d[d[fat_por].astype(str).str.strip().isin(sel_emp)]
+    if seg:
+        d = d[d[seg].astype(str).str.strip().isin(sel_seg)]
+    if busca:
+        campos = [c for c in [cli, projeto] if c]
+        m2 = pd.Series(False, index=d.index)
+        for c in campos:
+            m2 |= d[c].astype(str).str.contains(busca, case=False, na=False)
+        d = d[m2]
+    if venc and d1:
+        vv = su.parse_dates(d[venc])
+        d = d[((vv.dt.date >= d1) & (vv.dt.date <= d2)).fillna(False)]
+
+    if d.empty:
+        st.warning("Nenhum registro corresponde aos filtros.")
+        return
+
+    # ---------- Métricas ----------
+    total_mes   = d[val_par].sum()
+    total_cart  = d[val_tot].sum() if val_tot else 0
+    n_fat       = int((d[status].astype(str).str.strip() == "Faturado").sum()) if status else 0
+    n_a_fat     = int((d[status].astype(str).str.strip() == "Faturar").sum()) if status else 0
+    val_fat     = d.loc[d[status].astype(str).str.strip() == "Faturado", val_par].sum() if status else 0
+    val_a_fat   = d.loc[d[status].astype(str).str.strip() == "Faturar",  val_par].sum() if status else 0
+    n_cli       = d[cli].astype(str).str.strip().replace("", pd.NA).nunique() if cli else 0
+    ticket      = total_mes / len(d) if len(d) else 0
+    # vencendo em 7 dias
+    prox7 = pd.Series(dtype=float)
+    if venc:
+        vd = su.parse_dates(d[venc])
+        prox7 = d[(vd >= hoje) & (vd <= hoje + pd.Timedelta(days=7))][val_par]
+    n_seg = d[seg].astype(str).str.strip().replace("", pd.NA).nunique() if seg else 0
+
+    ui.kpi_row([
+        {"label": "Valor do Mês", "value": su.format_brl(total_mes), "color": ui.GREEN,
+         "sub": f"{len(d)} parcelas",
+         "help": "Soma do campo 'Valor' (parcela mensal) de todos os registros no filtro."},
+        {"label": f"Faturado ({n_fat})", "value": su.format_brl(val_fat), "color": ui.TEAL,
+         "help": "Parcelas com Status = Faturado. Já foram emitidas NF."},
+        {"label": f"A Faturar ({n_a_fat})", "value": su.format_brl(val_a_fat), "color": ui.AMBER,
+         "help": "Parcelas com Status = Faturar. NF ainda não emitida."},
+        {"label": "Vence em 7 dias", "value": su.format_brl(prox7.sum()),
+         "color": ui.RED if prox7.sum() > 0 else ui.SLATE,
+         "sub": f"{len(prox7)} parcelas",
+         "help": "Parcelas cujo vencimento cai nos próximos 7 dias."},
+    ])
+    ui.kpi_row([
+        {"label": "Carteira Total", "value": su.format_brl(total_cart), "color": ui.BLUE,
+         "sub": "soma Valor total dos contratos",
+         "help": "Soma do campo 'Valor total' — representa o valor cheio de cada contrato, "
+                 "não apenas a parcela do mês."},
+        {"label": "Clientes", "value": str(n_cli), "color": ui.PURPLE,
+         "help": "Quantidade de clientes únicos no filtro."},
+        {"label": "Segmentos", "value": str(n_seg), "color": ui.PINK,
+         "help": "Quantidade de segmentos diferentes no filtro."},
+        {"label": "Ticket médio", "value": su.format_brl(ticket), "color": ui.SLATE,
+         "help": "Valor médio por parcela. Conta: Valor do Mês ÷ nº de parcelas."},
+    ])
+    st.divider()
+
+    t1, t2, t3, t4 = st.tabs(
+        ["🖥️ Visão Geral", "🏷️ Segmentos", "🎯 Clientes", "🗂️ Detalhado"])
+
+    # ===== Visão Geral =====
+    with t1:
+        c1, c2 = st.columns(2)
+        with c1:
+            if status:
+                _h("Status dos contratos",
+                   "Divide o valor total das parcelas por Status: Faturado (NF emitida) "
+                   "e Faturar (ainda pendente).")
+                _donut(_dgroup(d, status, val_par), status, val_par,
+                       cmap={"Faturado": ui.TEAL, "Faturar": ui.AMBER})
+        with c2:
+            if fat_por:
+                _h("Por empresa (Faturar por)",
+                   "Valor das parcelas por empresa que fatura (Roboteasy ou Agapys).")
+                _donut(_dgroup(d, fat_por, val_par), fat_por, val_par)
+
+        if venc:
+            _h("Vencimentos por data",
+               "Valor das parcelas agrupado pelo dia de vencimento. Mostra a "
+               "concentração de recebimentos no mês.")
+            dd = d.assign(_vd=su.parse_dates(d[venc])).dropna(subset=["_vd"])
+            if not dd.empty:
+                g = dd.assign(_s=d[status].astype(str).str.strip() if status else "")
+                g = g.groupby(["_vd", "_s"])[val_par].sum().reset_index() if status \
+                    else dd.groupby("_vd")[val_par].sum().reset_index()
+                cmap_s = {"Faturado": ui.TEAL, "Faturar": ui.AMBER}
+                if status:
+                    fig = px.bar(g, x="_vd", y=val_par, color="_s",
+                                 color_discrete_map=cmap_s, text_auto=".2s")
+                else:
+                    fig = px.bar(g, x="_vd", y=val_par, text_auto=".2s")
+                    fig.update_traces(marker_color=ui.GREEN)
+                fig.update_traces(marker_line_width=0, marker_cornerradius=_CORNER,
+                                  textposition="outside", cliponaxis=False)
+                _mt(fig, date=True, keepname=bool(status))
+                fig.add_vline(x=hoje, line_dash="dot",
+                              line_color="rgba(255,255,255,0.25)", line_width=1)
+                _plot(ui.style_fig(fig, 320, legend=bool(status)), width="stretch")
+
+        if prev_fat:
+            _h("Cronograma de faturamento (data prevista de emissão NF)",
+               "Agrupa as parcelas 'A Faturar' pela data prevista de emissão da NF. "
+               "Mostra o que precisa ser faturado em cada dia.")
+            dd2 = d[d[status].astype(str).str.strip() == "Faturar"] if status else d
+            dd2 = dd2.assign(_pf=su.parse_dates(dd2[prev_fat])).dropna(subset=["_pf"])
+            if not dd2.empty:
+                g2 = dd2.groupby("_pf")[val_par].sum().reset_index().sort_values("_pf")
+                fig2 = px.bar(g2, x="_pf", y=val_par, text_auto=".2s")
+                fig2.update_traces(marker_color=ui.AMBER, marker_line_width=0,
+                                   marker_cornerradius=_CORNER,
+                                   textposition="outside", cliponaxis=False)
+                _mt(fig2, date=True)
+                fig2.add_vline(x=hoje, line_dash="dot",
+                               line_color="rgba(255,255,255,0.25)", line_width=1)
+                _plot(ui.style_fig(fig2, 300, legend=False), width="stretch")
+
+    # ===== Segmentos =====
+    with t2:
+        if seg:
+            c1, c2 = st.columns(2)
+            with c1:
+                _h("Valor por segmento",
+                   "Soma do valor das parcelas agrupado por Segmento.")
+                _bar(_dgroup(d, seg, val_par, asc=True), seg, val_par,
+                     horizontal=True, height=360)
+            with c2:
+                _h("Distribuição de clientes por segmento",
+                   "Quantidade de clientes únicos em cada segmento.")
+                if cli:
+                    g = d.copy()
+                    g[seg] = g[seg].astype(str).str.strip()
+                    g[cli] = g[cli].astype(str).str.strip()
+                    cnt = g[g[seg] != ""].groupby(seg)[cli].nunique().reset_index()
+                    cnt.columns = [seg, "Clientes"]
+                    cnt = cnt.sort_values("Clientes", ascending=True)
+                    _bar(cnt, seg, "Clientes", horizontal=True, height=360, money=False)
+
+            if val_tot:
+                _h("Carteira total por segmento",
+                   "Soma de 'Valor total' dos contratos por segmento — representa "
+                   "o comprometimento financeiro cheio de cada área.")
+                _bar(_dgroup(d, seg, val_tot, asc=True), seg, val_tot,
+                     horizontal=True, height=360, marker=ui.BLUE)
+
+            _h("Status × Segmento",
+               "Valor das parcelas por segmento e status. Mostra onde há mais "
+               "a faturar vs já faturado.")
+            if status:
+                dd = d.copy()
+                g = dd.groupby([seg, status])[val_par].sum().reset_index()
+                fig = px.bar(g, x=seg, y=val_par, color=status, barmode="stack",
+                             color_discrete_map={"Faturado": ui.TEAL, "Faturar": ui.AMBER},
+                             text_auto=".2s")
+                fig.update_traces(marker_line_width=0, marker_cornerradius=_CORNER)
+                _mt(fig, keepname=True)
+                _plot(ui.style_fig(fig, 360, legend=True), width="stretch")
+
+    # ===== Clientes =====
+    with t3:
+        if cli:
+            _ranking_bar(_dgroup(d, cli, val_par), cli, val_par, "sg_cli",
+                         "Valor por cliente (parcela mensal)", top=20, height=500,
+                         marker=ui.GREEN,
+                         help="Soma do valor das parcelas por cliente, do maior para o menor.")
+
+            _h("Concentração (Pareto) — maiores clientes",
+               "Barras = valor por cliente (maior→menor). Linha = % acumulado. "
+               "Mostra se poucos clientes concentram a maior parte do faturamento.")
+            _pareto(d, cli, val_par)
+
+            if val_tot and cli:
+                _h("Carteira total por cliente (top 15)",
+                   "Os 15 clientes com maior valor total de contrato (campo 'Valor total').")
+                _ranking_bar(_dgroup(d, cli, val_tot), cli, val_tot, "sg_cli_tot",
+                             "Valor total do contrato por cliente", top=15, height=420,
+                             marker=ui.BLUE)
+
+    # ===== Detalhado =====
+    with t4:
+        _h("Todos os registros (conforme filtros)",
+           "Tabela completa com status colorido, parcela, vencimento e valor. "
+           "Baixe em CSV pelo botão abaixo.")
+        # extrai numero atual / total da parcela
+        if parcela:
+            d["_parc_atual"] = (
+                d[parcela].astype(str).str.extract(r"(\d+)/")[0]
+                .pipe(pd.to_numeric, errors="coerce").astype("Int64"))
+            d["_parc_total"] = (
+                d[parcela].astype(str).str.extract(r"/(\d+)")[0]
+                .pipe(pd.to_numeric, errors="coerce").astype("Int64"))
+
+        cols = [c for c in [status, fat_por, seg, cli, projeto, parcela,
+                            venc, prev_fat, val_tot, val_par, nf_col, emissao, desc] if c]
+        disp = d[cols].sort_values(venc if venc else cols[0], na_position="last")
+
+        # tabela estilizada
+        money = [c for c in [val_tot, val_par] if c]
+        sty = disp.style.format({c: su.format_brl for c in money if c in disp.columns})
+        if status and status in disp.columns:
+            cores_s = {"Faturado": ui.TEAL, "Faturar": ui.AMBER}
+            sty = sty.map(
+                lambda v: f"color:{cores_s.get(str(v).strip(), '')};font-weight:600",
+                subset=[status])
+        kwargs = {"width": "stretch", "hide_index": True}
+        st.dataframe(sty, **kwargs)
+        st.download_button("⬇️ Baixar CSV",
+                           disp.to_csv(index=False).encode("utf-8-sig"),
+                           "segmento.csv", "text/csv", key="sg_csv")
+        st.caption(f"{len(disp)} registros no filtro.")
