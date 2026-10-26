@@ -1276,6 +1276,12 @@ def render_folha(fr):
 
     # ---------- Aplica filtros ----------
     d = fr.num.copy()
+    # Garante que as colunas de custo/horas sejam numericas mesmo quando a aba
+    # nao atingiu o limiar de conversao (ex.: "PROJEÇÃO com Fundo" com muitas
+    # celulas vazias/texto fica como string -> sum() concatena e float() quebra).
+    for c in {valor, proj, projf, vlrhr, horas}:
+        if c and not pd.api.types.is_numeric_dtype(d[c]):
+            d[c] = su.parse_br_number(d[c])
     for col, sel in [(empresa, sel_emp), (setor, sel_set), (tipo, sel_tipo), (modelo, sel_mod)]:
         if col:
             d = d[d[col].astype(str).str.strip().isin(sel)]
