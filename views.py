@@ -427,9 +427,31 @@ def render_resumo(cp, cr, fo, extratos, rb=None):
         empresa = st.radio("Empresa", empresas, horizontal=True, key="flt_empresa")
     with fc2:
         if dmin and dmax and dmin < dmax:
-            periodo = st.date_input("Periodo (por vencimento)", (dmin, dmax),
-                                    min_value=dmin, max_value=dmax,
-                                    format="DD/MM/YYYY", key="flt_periodo")
+            # Atalhos rapidos de periodo (sem precisar mexer no calendario).
+            def _mes(ref):
+                return ref.replace(day=1).date(), (ref + pd.offsets.MonthEnd(0)).date()
+
+            mes_vig = _mes(hoje)
+            mes_prox = _mes(hoje + pd.offsets.MonthBegin(1))
+            lo = min(dmin, mes_vig[0], mes_prox[0])
+            hi = max(dmax, mes_vig[1], mes_prox[1])
+            if "flt_periodo" not in st.session_state:
+                st.session_state["flt_periodo"] = (dmin, dmax)
+
+            dcol, b1, b2, b3 = st.columns([2.2, 1, 1, 0.7], vertical_alignment="bottom")
+            if b1.button("📅 Mês vigente", key="btn_mes_vig", width="stretch",
+                         help="Filtra o período para o mês atual (1º ao último dia)."):
+                st.session_state["flt_periodo"] = mes_vig
+            if b2.button("Próximo mês ▶", key="btn_prox_mes", width="stretch",
+                         help="Filtra o período para o próximo mês inteiro."):
+                st.session_state["flt_periodo"] = mes_prox
+            if b3.button("Tudo", key="btn_periodo_tudo", width="stretch",
+                         help="Volta a mostrar todo o período disponível (sem filtro de mês)."):
+                st.session_state["flt_periodo"] = (dmin, dmax)
+
+            periodo = dcol.date_input("Periodo (por vencimento)",
+                                      min_value=lo, max_value=hi,
+                                      format="DD/MM/YYYY", key="flt_periodo")
             d1, d2 = periodo if isinstance(periodo, (list, tuple)) and len(periodo) == 2 \
                 else (dmin, dmax)
         else:
