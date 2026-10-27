@@ -477,14 +477,14 @@ def render_resumo(cp, cr, fo, extratos, rb=None):
             venc_n = int(vmask.sum())
         return dict(cpf=cpf, crf=crf, fof=fof, stt=stt, caixa=caixa, a_receber=a_receber,
                     recebido=recebido, a_pagar=a_pagar, total_pagar=total_pagar,
-                    pago=pago, folha=folha, resultado=a_receber - a_pagar,
+                    pago=pago, folha=folha,
                     projetado=caixa + a_receber - a_pagar, venc_val=venc_val, venc_n=venc_n)
 
     m = _calc(empresa)
     cpf, crf, fof, stt = m["cpf"], m["crf"], m["fof"], m["stt"]
     caixa, a_receber, recebido = m["caixa"], m["a_receber"], m["recebido"]
     a_pagar, total_pagar, pago = m["a_pagar"], m["total_pagar"], m["pago"]
-    folha, resultado, projetado = m["folha"], m["resultado"], m["projetado"]
+    folha, projetado = m["folha"], m["projetado"]
     venc_val, venc_n = m["venc_val"], m["venc_n"]
     liquidez = (caixa + a_receber) / a_pagar if a_pagar else 0.0
     pct_receb = recebido / (recebido + a_receber) * 100 if (recebido + a_receber) else 0
@@ -535,10 +535,11 @@ def render_resumo(cp, cr, fo, extratos, rb=None):
          "help": "Custo mensal com consultores (soma da coluna TOTAL A PAGAR da aba Folha). "
                  "Obs.: este valor já está DENTRO do Contas a Pagar (linha 'Folha'), "
                  "então não deve ser somado a 'A Pagar' nem a 'Obrigações do mês'."},
-        {"label": "Resultado (Rec − Pag)", "value": su.format_brl(resultado),
-         "color": ui.GREEN if resultado >= 0 else ui.RED,
-         "sub": _split("resultado"),
-         "help": "A Receber − A Pagar. Positivo = há mais a receber do que a pagar no período."},
+        {"label": "Resultado", "value": su.format_brl(projetado),
+         "color": ui.GREEN if projetado >= 0 else ui.RED,
+         "sub": _split("projetado") or "caixa + receber − pagar",
+         "help": "Saldo em Caixa + A Receber − A Pagar. É quanto deve sobrar (ou faltar) no "
+                 "caixa depois de receber os títulos em aberto e pagar as contas em aberto."},
     ])
     ui.kpi_row([
         {"label": "Obrigações do mês", "value": su.format_brl(total_pagar),
@@ -547,12 +548,6 @@ def render_resumo(cp, cr, fo, extratos, rb=None):
                  "pagas + a pagar). JÁ INCLUI a folha (há uma linha 'Folha' no Contas a "
                  "Pagar), impostos e fornecedores — por isso NÃO se soma a folha de novo. "
                  "É o mesmo 'Total a Pagar' da tela Contas a Pagar."},
-        {"label": "Saldo Projetado", "value": su.format_brl(projetado),
-         "color": ui.GREEN if projetado >= 0 else ui.RED,
-         "sub": _split("projetado") or "caixa + receber − pagar",
-         "help": "Estimativa do caixa após receber os títulos em aberto e pagar as contas "
-                 "em aberto. Conta: Saldo em Caixa + A Receber − A Pagar. A Folha aparece "
-                 "como indicador à parte (e já está refletida nas contas a pagar/extrato)."},
         {"label": "Recebido", "value": su.format_brl(recebido),
          "color": ui.TEAL, "sub": _split("recebido") or f"{pct_receb:.0f}% do faturado",
          "help": "Quanto já entrou de clientes. Soma da coluna 'Recebido' da aba Recebidos. "
