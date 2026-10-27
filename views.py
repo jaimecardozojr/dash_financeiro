@@ -435,11 +435,8 @@ def render_resumo(cp, cr, fo, extratos, rb=None):
         else:
             d1, d2 = dmin, dmax
 
-    cpf = _filter_periodo(_filter_empresa(cp, empresa), ["DIA", "Vencimento"], d1, d2)
-    crf = _filter_periodo(_filter_empresa(cr, empresa), ["Vencimento"], d1, d2)
-    fof = _filter_empresa(fo, empresa)
+    extratos = extratos or {}
 
-    # ---------- Numeros ----------
     def _caixa_de(frame):
         if frame is None:
             return 0.0
@@ -449,83 +446,123 @@ def render_resumo(cp, cr, fo, extratos, rb=None):
         s = frame.num[cc].dropna()
         return float(s.iloc[-1]) if not s.empty else 0.0
 
-    extratos = extratos or {}
-    if empresa == "Todas":
-        caixa = sum(_caixa_de(f) for f in extratos.values())
-    else:
-        caixa = _caixa_de(extratos.get(empresa))
-    a_receber = _sum(crf, "A Receber")
-    if rb is not None:  # "Recebido" vem da aba dedicada "Recebidos"
-        rbf = _filter_periodo(_filter_empresa(rb, empresa), ["Vencimento"], d1, d2)
-        recebido = _sum(rbf, "Recebido")
-    else:
-        recebido = _sum(crf, "Recebido")
-    a_pagar = _sum(cpf, "Saldo")
-    total_pagar = _sum(cpf, "VALOR", "Valor")  # total do mes (ja inclui a folha)
-    pago = _sum(cpf, "Valor pago")
-    folha = _sum(fof, "TOTAL A PAGAR", "TOTAL À PAGAR", "Total a Pagar", "Total à Pagar",
-                 "pagar", "PROJEÇÃO", "Projeção", "PROJECAO")  # custo mensal real
-    if not folha:
-        folha = _sum(fof, "Salário", "Salario", "VALOR", "Valor")
-    resultado = a_receber - a_pagar
-    projetado = caixa + a_receber - a_pagar
+    # ---------- Numeros (calculados por empresa p/ detalhar os cards) ----------
+    def _calc(emp):
+        cpf = _filter_periodo(_filter_empresa(cp, emp), ["DIA", "Vencimento"], d1, d2)
+        crf = _filter_periodo(_filter_empresa(cr, emp), ["Vencimento"], d1, d2)
+        fof = _filter_empresa(fo, emp)
+        if emp == "Todas":
+            caixa = sum(_caixa_de(f) for f in extratos.values())
+        else:
+            caixa = _caixa_de(extratos.get(emp))
+        a_receber = _sum(crf, "A Receber")
+        if rb is not None:  # "Recebido" vem da aba dedicada "Recebidos"
+            rbf = _filter_periodo(_filter_empresa(rb, emp), ["Vencimento"], d1, d2)
+            recebido = _sum(rbf, "Recebido")
+        else:
+            recebido = _sum(crf, "Recebido")
+        a_pagar = _sum(cpf, "Saldo")
+        total_pagar = _sum(cpf, "VALOR", "Valor")  # total do mes (ja inclui a folha)
+        pago = _sum(cpf, "Valor pago")
+        folha = _sum(fof, "TOTAL A PAGAR", "TOTAL À PAGAR", "Total a Pagar", "Total à Pagar",
+                     "pagar", "PROJEÇÃO", "Projeção", "PROJECAO")  # custo mensal real
+        if not folha:
+            folha = _sum(fof, "Salário", "Salario", "VALOR", "Valor")
+        stt = su.find_col(cpf.raw.columns, "Status") if cpf is not None else None
+        venc_val, venc_n = 0.0, 0
+        if stt:
+            vmask = cpf.raw[stt].astype(str).str.strip().str.lower() == "vencido"
+            sal_c = su.find_col(cpf.num.columns, "Saldo")
+            venc_val = float(cpf.num.loc[vmask, sal_c].sum()) if sal_c else 0.0
+            venc_n = int(vmask.sum())
+        return dict(cpf=cpf, crf=crf, fof=fof, stt=stt, caixa=caixa, a_receber=a_receber,
+                    recebido=recebido, a_pagar=a_pagar, total_pagar=total_pagar,
+                    pago=pago, folha=folha, resultado=a_receber - a_pagar,
+                    projetado=caixa + a_receber - a_pagar, venc_val=venc_val, venc_n=venc_n)
+
+    m = _calc(empresa)
+    cpf, crf, fof, stt = m["cpf"], m["crf"], m["fof"], m["stt"]
+    caixa, a_receber, recebido = m["caixa"], m["a_receber"], m["recebido"]
+    a_pagar, total_pagar, pago = m["a_pagar"], m["total_pagar"], m["pago"]
+    folha, resultado, projetado = m["folha"], m["resultado"], m["projetado"]
+    venc_val, venc_n = m["venc_val"], m["venc_n"]
     liquidez = (caixa + a_receber) / a_pagar if a_pagar else 0.0
     pct_receb = recebido / (recebido + a_receber) * 100 if (recebido + a_receber) else 0
     pct_pago = pago / (pago + a_pagar) * 100 if (pago + a_pagar) else 0
 
-    stt = su.find_col(cpf.raw.columns, "Status") if cpf is not None else None
-    venc_val, venc_n = 0.0, 0
-    if stt:
-        vmask = cpf.raw[stt].astype(str).str.strip().str.lower() == "vencido"
-        sal_c = su.find_col(cpf.num.columns, "Saldo")
-        venc_val = float(cpf.num.loc[vmask, sal_c].sum()) if sal_c else 0.0
-        venc_n = int(vmask.sum())
+    # Detalhamento por empresa: so quando o filtro esta em "Todas".
+    companhias = sorted([e for e in empresas if e != "Todas"],
+                        key=lambda e: (e != "Roboteasy", e))
+    split_mode = empresa == "Todas" and len(companhias) >= 2
+    por_emp = {e: _calc(e) for e in companhias} if split_mode else {}
+
+    def _abbr(nome):
+        return nome[:4] if len(nome) > 6 else nome
+
+    def _compact(v):
+        v = float(v or 0)
+        a, s = abs(v), ("-" if v < 0 else "")
+        if a >= 1_000_000:
+            return f"{s}R$ {a / 1_000_000:.1f}M".replace(".", ",")
+        if a >= 1_000:
+            return f"{s}R$ {a / 1_000:.0f}k"
+        return f"{s}R$ {a:.0f}"
+
+    def _split(chave):
+        if not split_mode:
+            return None
+        return " · ".join(f"{_abbr(e)} {_compact(por_emp[e][chave])}" for e in companhias)
 
     # ---------- KPIs ----------
     ui.kpi_row([
         {"label": "Saldo em Caixa", "value": su.format_brl(caixa),
          "color": ui.GREEN if caixa >= 0 else ui.RED,
-         "sub": "conta corrente" + (" (grupo)" if empresa == "Todas" else f" ({empresa})"),
+         "sub": _split("caixa") or ("conta corrente" +
+                (" (grupo)" if empresa == "Todas" else f" ({empresa})")),
          "help": "Dinheiro disponível hoje. É o último saldo do extrato de cada empresa. "
                  "Com empresa = Todas, soma as duas contas; filtrando por empresa, mostra "
                  "só a dela."},
         {"label": "A Receber", "value": su.format_brl(a_receber), "color": ui.GREEN,
+         "sub": _split("a_receber"),
          "help": "Quanto os clientes ainda devem. Soma da coluna 'A Receber' dos títulos "
                  "em aberto (aba CR em aberto), respeitando os filtros acima."},
         {"label": "A Pagar (em aberto)", "value": su.format_brl(a_pagar), "color": ui.RED,
+         "sub": _split("a_pagar"),
          "help": "Quanto você ainda deve. Soma da coluna 'Saldo' (= VALOR − Valor pago) das "
                  "Contas a Pagar ainda em aberto."},
         {"label": "Folha", "value": su.format_brl(folha), "color": ui.BLUE,
+         "sub": _split("folha"),
          "help": "Custo mensal com consultores (soma da coluna TOTAL A PAGAR da aba Folha). "
                  "Obs.: este valor já está DENTRO do Contas a Pagar (linha 'Folha'), "
                  "então não deve ser somado a 'A Pagar' nem a 'Obrigações do mês'."},
         {"label": "Resultado (Rec − Pag)", "value": su.format_brl(resultado),
          "color": ui.GREEN if resultado >= 0 else ui.RED,
+         "sub": _split("resultado"),
          "help": "A Receber − A Pagar. Positivo = há mais a receber do que a pagar no período."},
     ])
     ui.kpi_row([
         {"label": "Obrigações do mês", "value": su.format_brl(total_pagar),
-         "color": ui.PINK, "sub": "total a pagar (já inclui folha)",
+         "color": ui.PINK, "sub": _split("total_pagar") or "total a pagar (já inclui folha)",
          "help": "Total de compromissos do mês = soma de VALOR do Contas a Pagar (contas "
                  "pagas + a pagar). JÁ INCLUI a folha (há uma linha 'Folha' no Contas a "
                  "Pagar), impostos e fornecedores — por isso NÃO se soma a folha de novo. "
                  "É o mesmo 'Total a Pagar' da tela Contas a Pagar."},
         {"label": "Saldo Projetado", "value": su.format_brl(projetado),
          "color": ui.GREEN if projetado >= 0 else ui.RED,
-         "sub": "caixa + receber − pagar",
+         "sub": _split("projetado") or "caixa + receber − pagar",
          "help": "Estimativa do caixa após receber os títulos em aberto e pagar as contas "
                  "em aberto. Conta: Saldo em Caixa + A Receber − A Pagar. A Folha aparece "
                  "como indicador à parte (e já está refletida nas contas a pagar/extrato)."},
         {"label": "Recebido", "value": su.format_brl(recebido),
-         "color": ui.TEAL, "sub": f"{pct_receb:.0f}% do faturado",
+         "color": ui.TEAL, "sub": _split("recebido") or f"{pct_receb:.0f}% do faturado",
          "help": "Quanto já entrou de clientes. Soma da coluna 'Recebido' da aba Recebidos. "
                  "O % = Recebido ÷ (Recebido + A Receber)."},
         {"label": "Pago", "value": su.format_brl(pago),
-         "color": ui.TEAL, "sub": f"{pct_pago:.0f}% do total",
+         "color": ui.TEAL, "sub": _split("pago") or f"{pct_pago:.0f}% do total",
          "help": "Quanto já foi pago a fornecedores. Soma de 'Valor pago' das Contas a Pagar. "
                  "O % = Pago ÷ (Pago + A Pagar em aberto)."},
         {"label": f"Contas Vencidas ({venc_n})", "value": su.format_brl(venc_val),
-         "color": ui.RED, "sub": "contas a pagar em atraso",
+         "color": ui.RED, "sub": _split("venc_val") or "contas a pagar em atraso",
          "help": "Contas a pagar já vencidas e não quitadas. Soma do 'Saldo' das contas com "
                  "Status = Vencido. O número entre parênteses é a quantidade."},
     ])
