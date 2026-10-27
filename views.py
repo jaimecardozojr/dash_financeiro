@@ -463,9 +463,10 @@ def render_resumo(cp, cr, fo, extratos, rb=None):
     a_pagar = _sum(cpf, "Saldo")
     total_pagar = _sum(cpf, "VALOR", "Valor")  # total do mes (ja inclui a folha)
     pago = _sum(cpf, "Valor pago")
-    folha = _sum(fof, "PROJEÇÃO", "Projeção", "PROJECAO")  # custo mensal real
+    folha = _sum(fof, "TOTAL A PAGAR", "TOTAL À PAGAR", "Total a Pagar", "Total à Pagar",
+                 "pagar", "PROJEÇÃO", "Projeção", "PROJECAO")  # custo mensal real
     if not folha:
-        folha = _sum(fof, "VALOR", "Valor")
+        folha = _sum(fof, "Salário", "Salario", "VALOR", "Valor")
     resultado = a_receber - a_pagar
     projetado = caixa + a_receber - a_pagar
     liquidez = (caixa + a_receber) / a_pagar if a_pagar else 0.0
@@ -495,7 +496,7 @@ def render_resumo(cp, cr, fo, extratos, rb=None):
          "help": "Quanto você ainda deve. Soma da coluna 'Saldo' (= VALOR − Valor pago) das "
                  "Contas a Pagar ainda em aberto."},
         {"label": "Folha", "value": su.format_brl(folha), "color": ui.BLUE,
-         "help": "Custo mensal com consultores (soma da coluna PROJEÇÃO da aba Folha). "
+         "help": "Custo mensal com consultores (soma da coluna TOTAL A PAGAR da aba Folha). "
                  "Obs.: este valor já está DENTRO do Contas a Pagar (linha 'Folha'), "
                  "então não deve ser somado a 'A Pagar' nem a 'Obrigações do mês'."},
         {"label": "Resultado (Rec − Pag)", "value": su.format_brl(resultado),
@@ -605,11 +606,14 @@ def render_resumo(cp, cr, fo, extratos, rb=None):
     c5, c6 = st.columns(2)
     with c5:
         setor = su.find_col(fof.raw.columns, "SETOR", "Setor") if fof is not None else None
-        fval = (su.find_col(fof.num.columns, "PROJEÇÃO", "Projeção", "PROJECAO")
-                or su.find_col(fof.num.columns, "VALOR", "Valor")) if fof is not None else None
+        fval = (su.find_col(fof.num.columns, "TOTAL A PAGAR", "TOTAL À PAGAR",
+                            "Total a Pagar", "Total à Pagar", "pagar",
+                            "PROJEÇÃO", "Projeção", "PROJECAO")
+                or su.find_col(fof.num.columns, "Salário", "Salario", "VALOR", "Valor")) \
+            if fof is not None else None
         if setor and fval:
             _h("Folha por setor",
-               "Custo mensal da folha dividido por setor. Soma da coluna PROJEÇÃO "
+               "Custo mensal da folha dividido por setor. Soma da coluna TOTAL A PAGAR "
                "(custo de cada consultor) agrupada pelo SETOR.")
             _bar(_group(fof, setor, fval, asc=True), setor, fval, horizontal=True, height=320)
     with c6:
@@ -1189,10 +1193,6 @@ def render_contas_receber(fr, rb=None):
 # -----------------------------------------------------------------------------
 # FOLHA (helpers)
 # -----------------------------------------------------------------------------
-_PT_MESES = {"jan": 1, "fev": 2, "mar": 3, "abr": 4, "mai": 5, "jun": 6,
-             "jul": 7, "ago": 8, "set": 9, "out": 10, "nov": 11, "dez": 12}
-
-
 def _dgroup(d, dim, val, top=None, asc=False, agg="sum"):
     x = d.copy()
     x[dim] = x[dim].astype(str).str.strip()
@@ -1211,39 +1211,29 @@ def _dcount(d, dim, asc=False):
     return g.sort_values("Qtde", ascending=asc)
 
 
-def _parse_reajuste(series):
-    """Converte 'ago./26', 'set./23' em 'YYYY-MM' (ou None)."""
-    out = []
-    for v in series.astype(str):
-        m = re.match(r"\s*([a-zç]{3})\.?\s*[/\-]?\s*(\d{2,4})", v.strip().lower())
-        if m and m.group(1) in _PT_MESES:
-            y = int(m.group(2))
-            y = y + 2000 if y < 100 else y
-            out.append(f"{y:04d}-{_PT_MESES[m.group(1)]:02d}")
-        else:
-            out.append(None)
-    return pd.Series(out, index=series.index)
-
-
 # -----------------------------------------------------------------------------
 # FOLHA
 # -----------------------------------------------------------------------------
 def render_folha(fr):
     st.subheader("🤖 Folha / Consultores — Análise Detalhada")
-    hoje = pd.Timestamp.today().normalize()
 
-    consult = su.find_col(fr.raw.columns, "Consultores", "Consultor", "Nome")
-    valor = su.find_col(fr.num.columns, "VALOR", "Valor")
-    tipo = su.find_col(fr.raw.columns, "TIPO", "Tipo")
-    modelo = su.find_col(fr.raw.columns, "MODELO", "Modelo")
-    empresa = su.find_col(fr.raw.columns, "EMPRESA", "Empresa")
+    # find_col tolera acentos/maiusculas e variacoes. "pagar" (parcial) acha a
+    # coluna TOTAL A PAGAR mesmo com o caractere estranho do cabecalho.
+    consult = su.find_col(fr.raw.columns, "Consultores", "Consutores", "Consultor", "Nome")
     setor = su.find_col(fr.raw.columns, "SETOR", "Setor")
-    dtini = su.find_col(fr.raw.columns, "DT.INÍCIO", "DT.INICIO", "Admissão", "Admissao")
-    reaj = su.find_col(fr.raw.columns, "REAJUSTE", "Reajuste")
-    horas = su.find_col(fr.num.columns, "TOT.HRS", "TOT.HORAS", "Horas")
-    vlrhr = su.find_col(fr.num.columns, "VLR/HR", "VLR/HORA")
-    proj = su.find_col(fr.num.columns, "PROJEÇÃO", "Projeção", "PROJECAO")
-    projf = su.find_col(fr.num.columns, "PROJEÇÃO com Fundo", "Projeção com Fundo")
+    empresa = su.find_col(fr.raw.columns, "EMPRESA", "Empresa")
+    modelo = su.find_col(fr.raw.columns, "Forma de Pagamento", "Forma Pagamento",
+                         "MODELO", "Modelo")
+    status = su.find_col(fr.raw.columns, "STATUS", "Status", "Situação", "Situacao")
+    horas = su.find_col(fr.num.columns, "Horas", "TOT.HRS", "TOT.HORAS")
+    salario = su.find_col(fr.num.columns, "Salário", "Salario", "Salário Base",
+                          "Salario Base", "Valor Base", "Valor")
+    descontos = su.find_col(fr.num.columns, "Descontos", "Desconto")
+    reemb = su.find_col(fr.num.columns, "Reembolso Despesas", "Reembolso de Despesas",
+                        "Reembolso")
+    extra = su.find_col(fr.num.columns, "Extra", "Extras", "Adicional")
+    total = su.find_col(fr.num.columns, "TOTAL A PAGAR", "TOTAL À PAGAR",
+                        "Total a Pagar", "Total à Pagar", "pagar")
 
     # ---------- Filtros ----------
     def opts(col):
@@ -1256,33 +1246,34 @@ def render_folha(fr):
     f1, f2, f3, f4 = st.columns(4)
     sel_emp = f1.multiselect("Empresa", opts(empresa), default=opts(empresa), key="fo_emp")
     sel_set = f2.multiselect("Setor", opts(setor), default=opts(setor), key="fo_set")
-    sel_tipo = f3.multiselect("Tipo", opts(tipo), default=opts(tipo), key="fo_tipo")
-    sel_mod = f4.multiselect("Modelo", opts(modelo), default=opts(modelo), key="fo_mod")
-    g1, g2 = st.columns([2, 1])
-    metrica = g1.radio("Métrica de custo",
-                       ["Projeção (custo mensal)", "Projeção com Fundo", "Valor base"],
-                       horizontal=True, key="fo_metrica")
-    busca = g2.text_input("Buscar consultor", key="fo_busca")
+    sel_mod = f3.multiselect("Forma de pagamento", opts(modelo), default=opts(modelo),
+                             key="fo_mod")
+    sel_st = f4.multiselect("Status", opts(status), default=opts(status), key="fo_status")
 
-    if "Fundo" in metrica and projf:
-        custo_col = projf
-    elif "Projeção" in metrica and proj:
-        custo_col = proj
-    else:
-        custo_col = valor or proj or projf
-    if custo_col is None:
-        st.warning("Nao encontrei colunas de custo (PROJEÇÃO/VALOR) nesta aba.")
+    g1, g2 = st.columns([2, 1])
+    metricas = ([("Total a pagar", total)] if total else []) + \
+               ([("Salário (base)", salario)] if salario else [])
+    if not metricas:
+        st.warning("Não encontrei colunas de custo (TOTAL A PAGAR/Salário) nesta aba.")
         return
+    nome_metrica = g1.radio("Métrica de custo", [m[0] for m in metricas],
+                            horizontal=True, key="fo_metrica")
+    busca = g2.text_input("Buscar consultor", key="fo_busca")
+    custo_col = dict(metricas)[nome_metrica]
 
     # ---------- Aplica filtros ----------
     d = fr.num.copy()
-    # Garante que as colunas de custo/horas sejam numericas mesmo quando a aba
-    # nao atingiu o limiar de conversao (ex.: "PROJEÇÃO com Fundo" com muitas
-    # celulas vazias/texto fica como string -> sum() concatena e float() quebra).
-    for c in {valor, proj, projf, vlrhr, horas}:
+    # Garante que as colunas de dinheiro sejam numericas mesmo quando a aba nao
+    # atingiu o limiar de conversao (ex.: Descontos/Reembolso/Extra com muitas
+    # celulas "R$ -" ficam como texto -> sum() concatena e float() quebra).
+    for c in {salario, descontos, reemb, extra, total, horas}:
         if c and not pd.api.types.is_numeric_dtype(d[c]):
             d[c] = su.parse_br_number(d[c])
-    for col, sel in [(empresa, sel_emp), (setor, sel_set), (tipo, sel_tipo), (modelo, sel_mod)]:
+    for c in {salario, descontos, reemb, extra, total}:
+        if c:
+            d[c] = d[c].fillna(0.0)  # "R$ -" significa zero
+    for col, sel in [(empresa, sel_emp), (setor, sel_set), (modelo, sel_mod),
+                     (status, sel_st)]:
         if col:
             d = d[d[col].astype(str).str.strip().isin(sel)]
     if busca and consult:
@@ -1291,52 +1282,60 @@ def render_folha(fr):
         st.warning("Nenhum consultor corresponde aos filtros.")
         return
 
+    # R$/hora implicito (salario base / horas do mes)
+    rhr = None
+    if salario and horas:
+        d["_rhr"] = d[salario] / d[horas].where(d[horas] != 0)
+        rhr = "_rhr"
+
     # ---------- KPIs ----------
     custo_total = float(d[custo_col].sum())
-    custo_fundo = float(d[projf].sum()) if projf else custo_total
-    base_proj = float(d[proj].sum()) if proj else 0.0
-    provisao = (custo_fundo - base_proj) if (proj and projf) else 0.0
     headcount = len(d)
     custo_medio = custo_total / headcount if headcount else 0
-    vlrhr_medio = float(d[vlrhr].mean()) if vlrhr else 0
     horas_total = float(d[horas].sum()) if horas else 0
-    n_setores = d[setor].astype(str).str.strip().replace("", pd.NA).nunique() if setor else 0
+    sal_total = float(d[salario].sum()) if salario else 0.0
+    desc_total = float(d[descontos].sum()) if descontos else 0.0
+    reemb_total = float(d[reemb].sum()) if reemb else 0.0
+    extra_total = float(d[extra].sum()) if extra else 0.0
+    n_setores = (d[setor].astype(str).str.strip().replace("", pd.NA).nunique()
+                 if setor else 0)
 
     ui.kpi_row([
         {"label": "Custo Mensal", "value": su.format_brl(custo_total), "color": ui.BLUE,
-         "sub": metrica,
-         "help": "Custo total da folha no mês. Soma da métrica escolhida acima (PROJEÇÃO = "
-                 "valor/hora × horas, ou salário fixo) de todos os consultores do filtro."},
-        {"label": "Com Fundo", "value": su.format_brl(custo_fundo), "color": ui.PURPLE,
-         "sub": f"provisao {su.format_brl(provisao)}",
-         "help": "Custo já incluindo a provisão (fundo). Soma da coluna 'PROJEÇÃO com Fundo'. "
-                 "A provisão = Com Fundo − Projeção."},
+         "sub": nome_metrica,
+         "help": "Custo total da folha no mês pela métrica escolhida acima. Padrão: soma "
+                 "da coluna TOTAL A PAGAR (o que de fato sai do caixa) de todos os "
+                 "consultores do filtro."},
+        {"label": "Folha Base", "value": su.format_brl(sal_total), "color": ui.PURPLE,
+         "sub": "soma dos salários",
+         "help": "Soma da coluna Salário (remuneração base), antes de descontos, "
+                 "reembolsos e extras."},
         {"label": "Consultores", "value": str(headcount), "color": ui.TEAL,
          "sub": f"{n_setores} setores",
          "help": "Quantidade de consultores no filtro (linhas). Abaixo, o nº de setores "
                  "diferentes."},
-        {"label": "Custo Medio", "value": su.format_brl(custo_medio), "color": ui.AMBER,
+        {"label": "Custo Médio", "value": su.format_brl(custo_medio), "color": ui.AMBER,
          "sub": "por consultor",
          "help": "Custo médio por pessoa. Conta: Custo Mensal ÷ número de consultores."},
     ])
     ui.kpi_row([
-        {"label": "VLR/HR Medio", "value": su.format_brl(vlrhr_medio), "color": ui.TEAL,
-         "help": "Média do valor/hora dos consultores. Média aritmética da coluna VLR/HR "
-                 "no filtro."},
-        {"label": "Total Horas/mes", "value": f"{horas_total:,.0f}".replace(",", "."),
+        {"label": "Descontos", "value": su.format_brl(desc_total), "color": ui.RED,
+         "sub": "total no filtro",
+         "help": "Soma da coluna Descontos de todos os consultores do filtro."},
+        {"label": "Reembolsos", "value": su.format_brl(reemb_total), "color": ui.GREEN,
+         "sub": "total no filtro",
+         "help": "Soma da coluna Reembolso Despesas de todos os consultores do filtro."},
+        {"label": "Extras", "value": su.format_brl(extra_total), "color": ui.AMBER,
+         "sub": "total no filtro",
+         "help": "Soma da coluna Extra de todos os consultores do filtro."},
+        {"label": "Total Horas/mês", "value": f"{horas_total:,.0f}".replace(",", "."),
          "color": ui.SLATE,
-         "help": "Soma das horas mensais previstas de todos os consultores (coluna TOT.HRS)."},
-        {"label": "Maior custo", "value": su.format_brl(d[custo_col].max()), "color": ui.RED,
-         "sub": "consultor mais caro",
-         "help": "O maior custo individual no filtro (maior valor da métrica escolhida)."},
-        {"label": "Menor custo", "value": su.format_brl(d[custo_col].min()), "color": ui.GREEN,
-         "sub": "consultor mais barato",
-         "help": "O menor custo individual no filtro (menor valor da métrica escolhida)."},
+         "help": "Soma das horas mensais de todos os consultores (coluna Horas)."},
     ])
     st.divider()
 
-    t1, t2, t3, t4, t5 = st.tabs(
-        ["🖥️ Composição", "🏗️ Setores", "⚡ Horas & R$/h", "🤖 Consultores", "🔄 Reajustes"])
+    t1, t2, t3, t4 = st.tabs(
+        ["🖥️ Composição", "🏗️ Setores", "⚡ Horas & R$/h", "🤖 Consultores"])
 
     # ===== Composição =====
     with t1:
@@ -1349,23 +1348,46 @@ def render_folha(fr):
                 _bar(_dgroup(d, setor, custo_col, asc=True), setor, custo_col,
                      horizontal=True, height=360)
         with c2:
-            if tipo:
-                _h("Custo por tipo (HORA × FIXO)",
-                   "Custo somado por TIPO de contratação: por hora (HORA) ou fixo mensal "
-                   "(FIXO). Cada fatia é a soma do custo daquele tipo.")
-                _donut(_dgroup(d, tipo, custo_col), tipo, custo_col)
+            if modelo:
+                _h("Custo por forma de pagamento",
+                   "Custo somado por FORMA DE PAGAMENTO (Koopere, CLT, PJ, Direto). Mostra "
+                   "como o custo se distribui entre os formatos de contratação.")
+                _donut(_dgroup(d, modelo, custo_col), modelo, custo_col)
         c3, c4 = st.columns(2)
         with c3:
-            if modelo:
-                _h("Custo por modelo de contratação",
-                   "Custo somado por MODELO (Koopere, CLT, PJ). Mostra como o custo se "
-                   "distribui entre os formatos de contratação.")
-                _donut(_dgroup(d, modelo, custo_col), modelo, custo_col)
-        with c4:
             if empresa:
                 _h("Custo por empresa",
                    "Custo da folha somado por EMPRESA (Roboteasy/Agapys).")
                 _bar(_dgroup(d, empresa, custo_col), empresa, custo_col, height=360)
+        with c4:
+            if salario and total:
+                _h("Composição do custo",
+                   "Como se chega ao TOTAL A PAGAR: a partir do salário base, menos "
+                   "descontos, mais reembolsos e extras. 'Não pagos' = consultores com "
+                   "TOTAL A PAGAR zerado no mês (soma de todos do filtro).")
+                real_total = float(d[total].sum())
+                residual = real_total - (sal_total - desc_total + reemb_total + extra_total)
+                labels = ["Salário base", "Descontos", "Reembolsos", "Extras"]
+                ys = [sal_total, -desc_total, reemb_total, extra_total]
+                meas = ["absolute", "relative", "relative", "relative"]
+                if abs(residual) > 1:  # 3 linhas zeradas etc. -> passo de ajuste p/ fechar
+                    labels.append("Não pagos")
+                    ys.append(residual)
+                    meas.append("relative")
+                labels.append("Total a pagar")
+                ys.append(real_total)
+                meas.append("total")
+                wf = go.Figure(go.Waterfall(
+                    orientation="v", measure=meas, x=labels, y=ys,
+                    text=[su.format_brl(v) for v in ys],
+                    textposition="outside",
+                    connector=dict(line=dict(color="rgba(255,255,255,0.25)")),
+                    increasing=dict(marker=dict(color=ui.GREEN)),
+                    decreasing=dict(marker=dict(color=ui.RED)),
+                    totals=dict(marker=dict(color=ui.BLUE)),
+                    hovertemplate="<b>%{x}</b><br>R$ %{y:,.2f}<extra></extra>",
+                ))
+                _plot(ui.style_fig(wf, 360, legend=False), width="stretch")
 
     # ===== Setores =====
     with t2:
@@ -1386,8 +1408,8 @@ def render_folha(fr):
                "nº de consultores do setor (média).")
             _bar(_dgroup(d, setor, custo_col, agg="mean"), setor, custo_col, height=320)
             _h("Mapa de custos: setor → consultor",
-               "Retângulos proporcionais ao custo: cada setor se divide nos seus consultores. "
-               "Quanto maior o bloco, maior o custo daquela pessoa/setor.")
+               "Retângulos proporcionais ao custo: cada setor se divide nos seus "
+               "consultores. Quanto maior o bloco, maior o custo daquela pessoa/setor.")
             td = d.copy()
             td[setor] = td[setor].astype(str).str.strip().replace("", "(sem setor)")
             td = td[td[custo_col].fillna(0) > 0]
@@ -1408,41 +1430,40 @@ def render_folha(fr):
 
     # ===== Horas & R$/h =====
     with t3:
-        c1, c2 = st.columns(2)
-        with c1:
-            if setor and vlrhr:
-                _h("VLR/HR médio por setor",
-                   "Valor/hora médio de cada setor. Média da coluna VLR/HR dos consultores "
-                   "daquele setor.")
-                _bar(_dgroup(d, setor, vlrhr, agg="mean", asc=True), setor, vlrhr,
-                     horizontal=True, height=340)
-        with c2:
-            if vlrhr:
-                _h("Distribuição de VLR/HR",
-                   "Quantos consultores há em cada faixa de valor/hora. Passe o mouse "
-                   "para ver quem está em cada faixa.")
-                hd = d.dropna(subset=[vlrhr]).copy()
+        if not rhr:
+            st.caption("Para ver R$/hora é preciso ter as colunas Salário e Horas.")
+        else:
+            c1, c2 = st.columns(2)
+            with c1:
+                if setor:
+                    _h("R$/hora médio por setor",
+                       "Valor/hora médio de cada setor (salário ÷ horas). Média dos "
+                       "consultores daquele setor.")
+                    _bar(_dgroup(d.dropna(subset=[rhr]), setor, rhr, agg="mean", asc=True),
+                         setor, rhr, horizontal=True, height=340)
+            with c2:
+                _h("Distribuição de R$/hora",
+                   "Quantos consultores há em cada faixa de valor/hora (salário ÷ horas). "
+                   "Passe o mouse para ver quem está em cada faixa.")
+                hd = d.dropna(subset=[rhr]).copy()
                 if not hd.empty:
-                    # bins manuais para poder associar nomes a cada faixa
-                    vmin, vmax = hd[vlrhr].min(), hd[vlrhr].max()
                     nbins = min(15, max(5, len(hd) // 2))
-                    bins = pd.cut(hd[vlrhr], bins=nbins)
+                    bins = pd.cut(hd[rhr], bins=nbins)
                     hd["_faixa"] = bins.astype(str)
                     hd["_faixa_mid"] = bins.apply(lambda x: (x.left + x.right) / 2)
                     nome_col = consult if consult else None
                     grp = (hd.groupby("_faixa", observed=True)
                            .agg(
-                               Qtde=(vlrhr, "count"),
+                               Qtde=(rhr, "count"),
                                Mid=("_faixa_mid", "first"),
                                Nomes=(nome_col, lambda s: "<br>  · ".join(
                                    sorted(s.astype(str).str.strip().tolist())
-                               )) if nome_col else (vlrhr, "count"),
+                               )) if nome_col else (rhr, "count"),
                            )
                            .reset_index()
                            .sort_values("Mid"))
                     fig = px.bar(grp, x="Mid", y="Qtde",
-                                 custom_data=["Nomes", "_faixa"],
-                                 text="Qtde")
+                                 custom_data=["Nomes", "_faixa"], text="Qtde")
                     fig.update_traces(
                         marker_color=ui.TEAL,
                         marker_line_width=0,
@@ -1459,21 +1480,24 @@ def render_folha(fr):
                     )
                     fig.update_xaxes(title="R$/hora")
                     _plot(ui.style_fig(fig, 340, legend=False), width="stretch")
-        if horas and vlrhr:
-            _h("Relação horas × valor/hora (tamanho = custo mensal)",
-               "Cada bolha é um consultor: eixo X = horas/mês, eixo Y = valor/hora, tamanho "
-               "da bolha = custo mensal. Ajuda a achar quem é caro por hora ou por volume.")
-            sc = d.dropna(subset=[horas, vlrhr, custo_col]).copy()
-            sc["Consultor"] = sc[consult].astype(str) if consult else ""
-            fig = px.scatter(sc, x=horas, y=vlrhr, size=custo_col,
-                             color=(tipo if tipo else None), hover_name="Consultor",
-                             size_max=46, color_discrete_sequence=ui.SEQ)
-            fig.update_traces(
-                marker=dict(opacity=0.82, line=dict(width=1.5, color="rgba(0,0,0,0.4)")),
-                hovertemplate="<b>%{hovertext}</b><br>Horas: %{x:,.0f}<br>"
-                              "R$/h: R$ %{y:,.2f}<br>Custo: R$ %{marker.size:,.2f}<extra></extra>",
-            )
-            _plot(ui.style_fig(fig, 420, legend=bool(tipo)), width="stretch")
+            if horas:
+                _h("Relação horas × R$/hora (tamanho = custo mensal)",
+                   "Cada bolha é um consultor: eixo X = horas/mês, eixo Y = R$/hora "
+                   "(salário ÷ horas), tamanho da bolha = custo mensal.")
+                sc = d.dropna(subset=[horas, rhr, custo_col]).copy()
+                sc = sc[sc[custo_col] > 0]
+                sc["Consultor"] = sc[consult].astype(str) if consult else ""
+                fig = px.scatter(sc, x=horas, y=rhr, size=custo_col,
+                                 color=(modelo if modelo else None),
+                                 hover_name="Consultor",
+                                 size_max=46, color_discrete_sequence=ui.SEQ)
+                fig.update_traces(
+                    marker=dict(opacity=0.82, line=dict(width=1.5, color="rgba(0,0,0,0.4)")),
+                    hovertemplate="<b>%{hovertext}</b><br>Horas: %{x:,.0f}<br>"
+                                  "R$/h: R$ %{y:,.2f}<br>Custo: R$ %{marker.size:,.2f}"
+                                  "<extra></extra>",
+                )
+                _plot(ui.style_fig(fig, 420, legend=bool(modelo)), width="stretch")
 
     # ===== Consultores =====
     with t4:
@@ -1482,7 +1506,7 @@ def render_folha(fr):
             n = headcount
             rtop1.caption(f"{headcount} consultores no filtro.")
         else:
-            n = rtop1.slider("Quantos no ranking? (padrao: todos)", 5, headcount,
+            n = rtop1.slider("Quantos no ranking? (padrão: todos)", 5, headcount,
                              headcount, key="fo_topn")
         ordem = rtop2.radio("Ordem", ["Maior → menor", "Menor → maior"], key="fo_ordem")
         if consult:
@@ -1491,62 +1515,17 @@ def render_folha(fr):
             titulo = ("Todos os consultores" if n >= headcount
                       else f"Top {n} consultores") + " por custo"
             _h(f"{titulo} · {ordem.lower()}",
-               "Custo mensal (métrica escolhida) de cada consultor. Use o controle de "
+               "Custo (métrica escolhida) de cada consultor. Use o controle de "
                "quantidade e a ordem para focar nos mais caros ou mais baratos.")
             _bar(g, consult, custo_col, horizontal=True, height=max(320, n * 24))
-        if dtini:
-            anos = (hoje - su.parse_dates(d[dtini])).dt.days / 365.25
-            dd = d.assign(_anos=anos)
-
-            def faixa(a):
-                if pd.isna(a):
-                    return "Sem data"
-                if a < 1:
-                    return "< 1 ano"
-                if a < 3:
-                    return "1–3 anos"
-                if a < 5:
-                    return "3–5 anos"
-                return "5+ anos"
-
-            ordem = ["< 1 ano", "1–3 anos", "3–5 anos", "5+ anos", "Sem data"]
-            cc1, cc2 = st.columns(2)
-            with cc1:
-                _h("Tempo de casa (headcount)",
-                   "Quantos consultores há por faixa de antiguidade. Tempo de casa = hoje − "
-                   "DT.INÍCIO, agrupado em <1, 1–3, 3–5 e 5+ anos.")
-                g = dd.assign(_f=dd["_anos"].map(faixa))["_f"].value_counts().reset_index()
-                g.columns = ["Faixa", "Qtde"]
-                g["_o"] = g["Faixa"].map({k: i for i, k in enumerate(ordem)})
-                g = g.sort_values("_o")
-                fig = px.bar(g, x="Faixa", y="Qtde", text_auto=True)
-                fig.update_traces(marker_color=ui.BLUE,
-                                  hovertemplate="<b>%{x}</b><br>%{y:,.0f} consultor(es)<extra></extra>")
-                _plot(ui.style_fig(fig, 320, legend=False), width="stretch")
-            with cc2:
-                _h("Custo × tempo de casa",
-                   "Cada ponto é um consultor: eixo X = anos de casa, eixo Y = custo mensal. "
-                   "Ajuda a ver se os mais antigos custam mais.")
-                sc = dd.dropna(subset=["_anos"])
-                fig = px.scatter(sc, x="_anos", y=custo_col,
-                                 color=(setor if setor else None),
-                                 hover_name=(consult if consult else None),
-                                 color_discrete_sequence=ui.SEQ,
-                                 labels={"_anos": "Anos de casa"})
-                fig.update_traces(
-                    marker=dict(size=11, opacity=0.85,
-                                line=dict(width=1.5, color="rgba(0,0,0,0.4)")),
-                    hovertemplate="<b>%{hovertext}</b><br>Anos: %{x:.1f}<br>"
-                                  "Custo: R$ %{y:,.2f}<extra></extra>",
-                )
-                _plot(ui.style_fig(fig, 320, legend=False), width="stretch")
         _h("Tabela detalhada",
-           "Lista completa dos consultores no filtro, ordenada do maior custo para o menor, "
-           "com tipo, modelo, setor, horas, valor/hora e projeções.")
-        show = [c for c in [consult, empresa, setor, tipo, modelo, dtini, reaj,
-                            horas, vlrhr, valor, proj, projf] if c]
+           "Lista completa dos consultores no filtro, ordenada do maior custo para o "
+           "menor, com setor, forma de pagamento, horas, salário, descontos, reembolsos, "
+           "extras e total a pagar.")
+        show = [c for c in [consult, empresa, setor, modelo, status, horas, salario,
+                            descontos, reemb, extra, total] if c]
         colcfg = {}
-        for c in [valor, vlrhr, proj, projf]:
+        for c in [salario, descontos, reemb, extra, total]:
             if c:
                 colcfg[c] = st.column_config.NumberColumn(format="R$ %.2f")
         if horas:
@@ -1554,63 +1533,6 @@ def render_folha(fr):
         st.dataframe(d[show].sort_values(custo_col, ascending=False), width="stretch",
                      hide_index=True, column_config=colcfg)
         st.caption(f"{headcount} consultores no filtro.")
-
-    # ===== Reajustes =====
-    with t5:
-        if reaj:
-            per = _parse_reajuste(d[reaj])
-            dd = d.assign(_per=per)
-            com = dd[dd["_per"].notna()]
-            sem = len(dd) - len(com)
-            st.caption(f"{len(com)} consultores com reajuste definido · {sem} sem data.")
-            atual = hoje.strftime("%Y-%m")
-            if not com.empty:
-                c1, c2 = st.columns([1.4, 1])
-                with c1:
-                    _h("Reajustes por mês",
-                       "Quantos consultores têm reajuste marcado em cada mês. "
-                       "Passe o mouse para ver quem são. "
-                       "Amarelo = ainda vai acontecer; cinza = já passou.")
-                    # monta lista de nomes por mes para o hover
-                    nome_por_mes = (
-                        com.assign(_n=com[consult].astype(str).str.strip() if consult else "?")
-                        .groupby("_per")["_n"]
-                        .apply(lambda s: "<br>  · ".join(sorted(s.tolist())))
-                        .reset_index()
-                    )
-                    nome_por_mes.columns = ["Mes", "Nomes"]
-                    g = com["_per"].value_counts().reset_index()
-                    g.columns = ["Mes", "Qtde"]
-                    g = g.sort_values("Mes").merge(nome_por_mes, on="Mes", how="left")
-                    g["Quando"] = g["Mes"].apply(
-                        lambda m: "Futuro/atual" if m >= atual else "Passado")
-                    fig = px.bar(g, x="Mes", y="Qtde", color="Quando", text_auto=True,
-                                 color_discrete_map={"Futuro/atual": ui.AMBER,
-                                                     "Passado": ui.SLATE},
-                                 custom_data=["Nomes"])
-                    fig.update_traces(
-                        marker_line_width=0,
-                        marker_cornerradius=_CORNER,
-                        hovertemplate=(
-                            "<b>%{x}</b><br>"
-                            "%{y:,.0f} consultor(es):<br>"
-                            "  · %{customdata[0]}"
-                            "<extra></extra>"
-                        ),
-                    )
-                    _plot(ui.style_fig(fig, 340, legend=True), width="stretch")
-                with c2:
-                    _h("Próximos reajustes",
-                       "Lista de consultores com reajuste marcado de hoje em diante "
-                       "(mês ≥ mês atual), ordenada pela data.")
-                    prox = com[com["_per"] >= atual].sort_values("_per")
-                    cols = [c for c in [consult, setor, reaj] if c]
-                    if not prox.empty:
-                        st.dataframe(prox[cols], width="stretch", hide_index=True)
-                    else:
-                        st.caption("Nenhum reajuste futuro no filtro.")
-        else:
-            st.caption("Coluna de reajuste não encontrada.")
 
 
 # -----------------------------------------------------------------------------
