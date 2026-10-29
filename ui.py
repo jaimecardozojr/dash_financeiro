@@ -37,7 +37,8 @@ SLATE = "#64748B"
 PINK = "#EC4899"
 
 SEQ = [PRIMARY, BLUE, AMBER, PURPLE, TEAL, RED, PINK, SLATE]
-STATUS_COLORS = {"Pago": GREEN, "Pendente": AMBER, "Vencido": RED, "Em aberto": AMBER}
+STATUS_COLORS = {"Pago": GREEN, "Pendente": AMBER, "Vencido": RED, "Em aberto": AMBER,
+                 "A vencer": AMBER}
 
 _CSS = """
 <style>

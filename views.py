@@ -196,6 +196,19 @@ def _sum(fr, *cands):
     return float(fr.num[col].sum()) if col else 0.0
 
 
+def _cp_aberto_masks(saldo, venc_dt, hoje):
+    """Classifica contas a pagar por SALDO + vencimento (nao pelo texto do Status).
+
+    Em aberto = Saldo > 0. Vencido = em aberto e vencimento < hoje. A vencer = em
+    aberto e vencimento >= hoje (ou sem data). Assim 'Vencido + A vencer' SEMPRE fecha
+    com 'Em aberto', mesmo que a coluna Status esteja em branco ou marcada 'Pago' com
+    saldo residual. Devolve (mask_vencido, mask_a_vencer).
+    """
+    aberto = saldo.fillna(0) > 0
+    atrasado = venc_dt < hoje  # NaT -> False: conta sem data entra como 'a vencer'
+    return aberto & atrasado, aberto & ~atrasado
+
+
 def _range_datas(pairs):
     mins, maxs = [], []
     for fr, dnames in pairs:
@@ -492,11 +505,14 @@ def render_resumo(cp, cr, fo, extratos, rb=None):
             folha = _sum(fof, "Salário", "Salario", "VALOR", "Valor")
         stt = su.find_col(cpf.raw.columns, "Status") if cpf is not None else None
         venc_val, venc_n = 0.0, 0
-        if stt:
-            vmask = cpf.raw[stt].astype(str).str.strip().str.lower() == "vencido"
+        if cpf is not None:
             sal_c = su.find_col(cpf.num.columns, "Saldo")
-            venc_val = float(cpf.num.loc[vmask, sal_c].sum()) if sal_c else 0.0
-            venc_n = int(vmask.sum())
+            dia_c = su.find_col(cpf.raw.columns, "DIA", "Vencimento", "Data")
+            if sal_c and dia_c:
+                # Vencido por SALDO + data (nao pelo texto do Status), igual a tela CP.
+                vmask, _ = _cp_aberto_masks(cpf.num[sal_c], su.parse_dates(cpf.raw[dia_c]), hoje)
+                venc_val = float(cpf.num.loc[vmask, sal_c].sum())
+                venc_n = int(vmask.sum())
         return dict(cpf=cpf, crf=crf, fof=fof, stt=stt, caixa=caixa, a_receber=a_receber,
                     recebido=recebido, a_pagar=a_pagar, total_pagar=total_pagar,
                     pago=pago, folha=folha,
@@ -580,8 +596,9 @@ def render_resumo(cp, cr, fo, extratos, rb=None):
                  "O % = Pago ÷ (Pago + A Pagar em aberto)."},
         {"label": f"Contas Vencidas ({venc_n})", "value": su.format_brl(venc_val),
          "color": ui.RED, "sub": _split("venc_val") or "contas a pagar em atraso",
-         "help": "Contas a pagar já vencidas e não quitadas. Soma do 'Saldo' das contas com "
-                 "Status = Vencido. O número entre parênteses é a quantidade."},
+         "help": "Contas a pagar em aberto (Saldo > 0) cujo vencimento já passou. "
+                 "Classificado pela data, não pelo texto do Status. O número entre "
+                 "parênteses é a quantidade."},
     ])
 
     st.divider()
@@ -812,8 +829,11 @@ def render_contas_pagar(fr):
     venc_dt = su.parse_dates(d[dia]) if dia else pd.Series(pd.NaT, index=d.index)
     d = d.assign(_venc=venc_dt, _atraso=(hoje - venc_dt).dt.days)
     s = d[status].astype(str).str.strip() if status else pd.Series("", index=d.index)
-    is_venc = s.str.lower() == "vencido"
-    is_pend = s.str.lower() == "pendente"
+    # Classifica por SALDO + vencimento (nao pelo texto do Status) para que
+    # 'Vencido + A vencer' sempre feche com 'Em aberto', mesmo com Status em branco.
+    is_venc, is_pend = _cp_aberto_masks(d[saldo], d["_venc"], hoje)
+    # Higiene de dados: contas em aberto cujo Status nao esta como Pendente/Vencido.
+    sem_class = (d[saldo].fillna(0) > 0) & ~s.str.lower().isin(["pendente", "vencido"])
 
     total = d[valor].sum()
     pago_t = d[pago].sum() if pago else 0
@@ -839,13 +859,15 @@ def render_contas_pagar(fr):
          "help": "Quanto ainda falta pagar. Soma da coluna 'Saldo' (= VALOR − Valor pago)."},
         {"label": f"Vencido ({venc_n})", "value": su.format_brl(venc_val), "color": ui.RED,
          "sub": "em atraso",
-         "help": "Contas já vencidas e em aberto. Soma do 'Saldo' das contas com Status = "
-                 "Vencido. O número é a quantidade de contas."},
+         "help": "Contas em aberto (Saldo > 0) cujo vencimento (DIA) já passou. Classificado "
+                 "pela data, não pelo texto do Status. O número é a quantidade de contas."},
     ])
     ui.kpi_row([
         {"label": "A vencer", "value": su.format_brl(pend_val), "color": ui.TEAL,
-         "sub": "pendentes",
-         "help": "Contas ainda no prazo. Soma do 'Saldo' das contas com Status = Pendente."},
+         "sub": "no prazo",
+         "help": "Contas em aberto (Saldo > 0) com vencimento de hoje em diante (ou sem data). "
+                 "Classificado pela data, não pelo texto do Status. Vencido + A vencer = "
+                 "Em aberto."},
         {"label": "Vence em 7 dias", "value": su.format_brl(vence7), "color": ui.AMBER,
          "sub": f"{len(prox7)} contas",
          "help": "Contas em aberto que vencem de hoje até 7 dias à frente. Soma do 'Saldo' "
@@ -856,6 +878,14 @@ def render_contas_pagar(fr):
          "help": "Quantidade de fornecedores diferentes no filtro (valores únicos da "
                  "coluna FORNECEDOR)."},
     ])
+
+    n_sc = int(sem_class.sum())
+    if n_sc:
+        st.warning(
+            f"⚠️ {n_sc} conta(s) com saldo em aberto sem Status 'Pendente'/'Vencido' "
+            f"({su.format_brl(d.loc[sem_class, saldo].sum())}) — inclui linhas sem Status "
+            "ou marcadas 'Pago' com saldo residual. Foram classificadas automaticamente "
+            "pelo vencimento; recomendo acertar o Status (e o Valor pago) na planilha.")
     st.divider()
 
     t1, t2, t3, t4 = st.tabs(
@@ -865,11 +895,13 @@ def render_contas_pagar(fr):
     with t1:
         c1, c2 = st.columns(2)
         with c1:
-            if status:
-                _h("Em aberto por status",
-                   "Divide o valor em aberto (coluna 'Saldo') pelo Status: Pendente (a vencer) "
-                   "e Vencido. Cada fatia é a soma do Saldo daquele status.")
-                _donut(_dgroup(d, status, saldo), status, saldo, cmap=ui.STATUS_COLORS)
+            _h("Em aberto por situação",
+               "Divide o valor em aberto (Saldo > 0) entre Vencido (vencimento já passou) e "
+               "A vencer (no prazo ou sem data). Classificado pela data, não pelo texto do "
+               "Status, então as fatias somam exatamente o 'Em aberto'.")
+            dab = d[d[saldo].fillna(0) > 0].copy()
+            dab["_situacao"] = dab["_venc"].lt(hoje).map({True: "Vencido", False: "A vencer"})
+            _donut(_dgroup(dab, "_situacao", saldo), "_situacao", saldo, cmap=ui.STATUS_COLORS)
         with c2:
             _h("Aging de vencidos (dias em atraso)",
                "Só as contas vencidas, agrupadas por quanto tempo estão em atraso "
